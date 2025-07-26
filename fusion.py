@@ -205,3 +205,80 @@ if __name__ == "__main__":
     # print(f"Accuracy: {evaluation['metrics']['accuracy']}")
     # print(f"Bot detection - Precision: {evaluation['metrics']['bot']['precision']}, Recall: {evaluation['metrics']['bot']['recall']}, F-score: {evaluation['metrics']['bot']['f_score']}")
     # print(f"Human detection - Precision: {evaluation['metrics']['human']['precision']}, Recall: {evaluation['metrics']['human']['recall']}, F-score: {evaluation['metrics']['human']['f_score']}")
+
+
+'''
+My project is to create a web bot detections model. The basic idea is to detect a bot based on, 
+first mouse_movements and second from web logs. I need to create 3 files, one file would detect bots from 
+web logs, other would detect web bots from mouse movements and in the third file, the fusion of scores from
+    the previous 2 files will be calulated from which the decision of bot/human will be made.
+
+there is a folder called 'dataset' in the CAPSTONE folder. it is not staged for git dues to its size but i would like 
+to implement it for testing purposes. understand the dataset structure and rewrite the file paths in the codes to 
+make them run on the provided dataset
+
+The Web Bot Detection Dataset is organized into two main folders, phase1 and phase2, each representing a distinct 
+evaluation phase.
+phase1 Folder Structure:
+
+This folder is used for the first evaluation phase and contains two primary subfolders:
+annotations and data.
+annotations Folder: This subfolder stores the labels for the sessions.
+humans_and_moderate_bots: Contains annotation files for sessions involving human and moderate web bot interactions.
+train: A file with session_id and label (human or moderate bot) for training data.
+test: A file with session_id and label (human or moderate bot) for testing data.
+
+humans_and_advanced_bots: Contains annotation files for sessions involving human and advanced web bot interactions.
+train: A file with session_id and label (human or advanced bot) for training data.
+test: A file with session_id and label (human or advanced bot) for testing data.
+
+The train and test files in these annotation folders have two space-separated columns: the PHP session ID and its corresponding annotation (human, moderate bot, or advanced bot).
+data Folder: This subfolder contains the raw web logs and mouse movement data.
+web_logs: Contains web server logs for humans, moderate bots, and advanced bots. These logs follow the Apache2 log format and include the PHP session ID in each request. Examples include
+access_log_1.txt, access_log_2.txt, etc..
+mouse_movements: Contains detailed mouse movement data.
+humans_and_moderate_bots: Holds mouse movement data for human and moderate web bot sessions. Inside this, there are subfolders named after each {session_id}, which contain a mouse_movements.json file.
+humans_and_advanced_bots: Holds mouse movement data for human and advanced web bot sessions. Similarly, it contains subfolders named after each {session_id}, each with a mouse_movements.json file.
+
+Each mouse_movements.json file contains:
+session_id: The PHP session ID.
+total_behaviour: Mouse movement actions like m(x,y) for a move, c(l) for left click, c(r)for right click, and c(m) for middle click.
+mousemove_times: Timestamps of each mouse move in the format {(t0), (t1), ..., (tn)}.
+mousemove_total_behaviour: Coordinates of each mouse point in the format {(x0, y0), (x1, y1), ..., (xn, yn)}.
+
+phase2 Folder Structure: This folder is used for the second evaluation phase and also contains
+annotations and data subfolders.
+annotations Folder: Stores labels for the sessions in this phase.
+humans_and_advanced_bots: Contains an annotations.txt file with session_id and label for human and advanced web bot sessions used in the first part of this phase.
+humans_and_moderate_and_advanced_bots: Contains an annotations.txt file with session_id and label for human, moderate, and advanced web bot sessions used in the second part of this phase.
+
+These  annotations.txt files have two space-separated columns: the PHP session ID and whether the session is a human, moderate bot, or advanced bot.
+data Folder: Contains the raw web logs and mouse movement data for the second phase.
+web_logs: Contains web server logs for humans and bots, structured similarly to phase1 with Apache2 log format and PHP session IDs.
+mouse_movements: Contains mouse movement data exported as JSON collections from a MongoDB instance. Each file, e.g.,
+{session_id}.json, represents a session and includes:
+session_id: The PHP session ID.
+mousemove_client_height_width: Client's browser height and width during each mouse move {(height0, width0), ..., (heightn, widthn)}.
+mousemove_times: Timestamps of each mouse move {(t0), (t1), ..., (tn)}.
+mousemove_total_behaviour: Coordinates of the current mouse point {(x0, y0), ..., (xn, yn)}.
+mousemove_visited_urls: The URL where the mouse move was performed {(url0), (url1), ..., (urln)}
+
+Based on the provided context, the following folders within the dataset structure are similar to D1 and D2:
+
+The data related to D1 (Humans - Moderate bots) would be found in:
+phase1/annotations/humans_and_moderate_bots/train
+phase1/annotations/humans_and_moderate_bots/test
+
+The relevant web logs within phase1/data/web_logs that correspond to the session IDs in the humans_and_moderate_bots annotations.
+phase1/data/mouse_movements/humans_and_moderate_bots
+The data related to D2 (Humans - Advanced bots) would be found in:
+phase1/annotations/humans_and_advanced_bots/train
+phase1/annotations/humans_and_advanced_bots/test
+
+The relevant web logs within phase1/data/web_logs that correspond to the session IDs in the humans_and_advanced_bots annotations.
+phase1/data/mouse_movements/humans_and_advanced_bots use this dataset structure and replace D1 and D2 with corresponding provided paths.
+
+Complete dataset path:
+/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1
+/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase2
+    '''

@@ -383,15 +383,27 @@ class WebLogDetectionBot:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize the bot detector for dataset D1
-    detector = WebLogDetectionBot(dataset_type='D1')
+    # Dataset paths
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
     
-    # Example: Train the model with labeled data
-    # This would typically be done with your actual training data
-    # X_train = pd.read_csv('path_to_training_features.csv')
-    # y_train = pd.read_csv('path_to_training_labels.csv')['label']
-    # detector.train(X_train, y_train)
+    # Initialize the bot detector for dataset D1 (humans vs moderate bots)
+    detector_d1 = WebLogDetectionBot(dataset_type='D1')
     
-    # Example: Get bot detection scores from a web log file
-    # scores = detector.get_web_log_score('path_to_web_log.log')
-    # print("Bot detection scores:", scores)
+    # Initialize the bot detector for dataset D2 (humans vs advanced bots)
+    detector_d2 = WebLogDetectionBot(dataset_type='D2')
+    
+    # Example: Load training data for D1
+    # train_annotations_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/train')
+    # test_annotations_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/test')
+    
+    # Example: Load training data for D2
+    # train_annotations_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/train')
+    # test_annotations_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/test')
+    
+    # Example: Get bot detection scores from web log files
+    # web_logs_dir = os.path.join(dataset_base, 'data/web_logs')
+    # for log_file in os.listdir(web_logs_dir):
+    #     if log_file.endswith('.txt'):
+    #         log_path = os.path.join(web_logs_dir, log_file)
+    #         scores = detector_d1.get_web_log_score(log_path)
+    #         print(f"Bot detection scores for {log_file}: {scores}")

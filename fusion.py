@@ -84,8 +84,10 @@ class BotDetectionFusion:
         web_log_scores = self.web_log_detector.get_web_log_score(web_log_path)
         score_wl = web_log_scores.get(session_id, 0.5)  # Default to neutral if not found
         
-        # Get mouse movement score
-        score_mv = self.mouse_movement_detector.process_session_data(session_id, mouse_data_dir, phase)
+        # Get mouse movement score (use the same dataset_type as the fusion module)
+        score_mv = self.mouse_movement_detector.process_session_data(
+            session_id, mouse_data_dir, phase, dataset_type=self.dataset_type
+        )
         
         # Fuse scores
         score_tot = self.fuse_scores(score_mv, score_wl)
@@ -106,69 +108,111 @@ class BotDetectionFusion:
         Evaluate the fusion model on a dataset.
         
         Args:
-            dataset_dir (str): Directory containing the dataset
+            dataset_dir (str): Directory containing the dataset (should be the phase1 or phase2 folder)
             phase (str): 'phase1' or 'phase2' to specify which dataset format to use
-            ground_truth_path (str): Path to ground truth labels (optional)
+            ground_truth_path (str): Path to the ground truth annotations file (optional)
             
         Returns:
             dict: Dictionary containing evaluation metrics if ground truth is provided,
                   otherwise just the classification results
         """
-        results = []
-        web_log_path = os.path.join(dataset_dir, 'web_logs.log')  # Adjust path as needed
+        results = {}
         
-        # Get all session directories
-        session_ids = [d for d in os.listdir(dataset_dir) 
-                      if os.path.isdir(os.path.join(dataset_dir, d)) and not d.startswith('.')]
-        
-        for session_id in session_ids:
-            result = self.process_session(session_id, web_log_path, dataset_dir, phase)
-            results.append(result)
-        
-        # If ground truth is provided, calculate metrics
+        # Load ground truth if provided
+        ground_truth = {}
         if ground_truth_path and os.path.exists(ground_truth_path):
             with open(ground_truth_path, 'r') as f:
-                ground_truth = json.load(f)
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        session_id = parts[0]
+                        label = parts[1]
+                        # Convert labels to binary: 1 for any bot type, 0 for human
+                        ground_truth[session_id] = 1 if 'bot' in label.lower() else 0
+        
+        # Process each session
+        if phase == 'phase1':
+            # Determine the correct mouse movement subfolder based on dataset type
+            if self.dataset_type == 'D1':
+                mouse_subfolder = 'humans_and_moderate_bots'
+            elif self.dataset_type == 'D2':
+                mouse_subfolder = 'humans_and_advanced_bots'
+            else:
+                raise ValueError(f"Unknown dataset type: {self.dataset_type}")
             
-            # Calculate metrics
-            tp = fp = tn = fn = 0
-            for result in results:
-                session_id = result['session_id']
-                predicted = result['classification']
-                actual = ground_truth.get(session_id)
+            # Set up directory paths
+            mouse_data_dir = os.path.join(dataset_dir, 'data', 'mouse_movements')
+            mouse_specific_dir = os.path.join(mouse_data_dir, mouse_subfolder)
+            web_logs_dir = os.path.join(dataset_dir, 'data', 'web_logs')
+            
+            # Get all session IDs from mouse movement data
+            session_ids = set()
+            if os.path.exists(mouse_specific_dir):
+                for item in os.listdir(mouse_specific_dir):
+                    item_path = os.path.join(mouse_specific_dir, item)
+                    if os.path.isdir(item_path):
+                        session_ids.add(item)
+            
+            # Process each session
+            for session_id in session_ids:
+                # Find the appropriate web log file
+                # This is a simplified approach - you might need to implement
+                # a more sophisticated method to match sessions to log files
+                web_log_path = None
+                if os.path.exists(web_logs_dir):
+                    for log_file in os.listdir(web_logs_dir):
+                        if log_file.endswith('.txt'):
+                            web_log_path = os.path.join(web_logs_dir, log_file)
+                            break  # Use the first log file for now
                 
-                if actual == 'bot' and predicted == 'bot':
-                    tp += 1
-                elif actual == 'human' and predicted == 'bot':
-                    fp += 1
-                elif actual == 'human' and predicted == 'human':
-                    tn += 1
-                elif actual == 'bot' and predicted == 'human':
-                    fn += 1
+                if web_log_path:
+                    session_result = self.process_session(
+                        session_id, web_log_path, mouse_data_dir, phase
+                    )
+                    results[session_id] = session_result
+        
+        # Calculate metrics if ground truth is available
+        if ground_truth:
+            tp = fp = tn = fn = 0
+            
+            for session_id, result in results.items():
+                if session_id in ground_truth:
+                    predicted = 1 if result['classification'] == 'bot' else 0
+                    actual = ground_truth[session_id]
+                    
+                    if predicted == 1 and actual == 1:
+                        tp += 1
+                    elif predicted == 1 and actual == 0:
+                        fp += 1
+                    elif predicted == 0 and actual == 0:
+                        tn += 1
+                    elif predicted == 0 and actual == 1:
+                        fn += 1
             
             # Calculate metrics
             accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-            precision_bot = tp / (tp + fp) if (tp + fp) > 0 else 0
-            recall_bot = tp / (tp + fn) if (tp + fn) > 0 else 0
-            f_score_bot = 2 * (precision_bot * recall_bot) / (precision_bot + recall_bot) if (precision_bot + recall_bot) > 0 else 0
             
-            precision_human = tn / (tn + fn) if (tn + fn) > 0 else 0
-            recall_human = tn / (tn + fp) if (tn + fp) > 0 else 0
-            f_score_human = 2 * (precision_human * recall_human) / (precision_human + recall_human) if (precision_human + recall_human) > 0 else 0
+            bot_precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            bot_recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            bot_f_score = 2 * (bot_precision * bot_recall) / (bot_precision + bot_recall) if (bot_precision + bot_recall) > 0 else 0
+            
+            human_precision = tn / (tn + fn) if (tn + fn) > 0 else 0
+            human_recall = tn / (tn + fp) if (tn + fp) > 0 else 0
+            human_f_score = 2 * (human_precision * human_recall) / (human_precision + human_recall) if (human_precision + human_recall) > 0 else 0
             
             return {
                 'results': results,
                 'metrics': {
                     'accuracy': accuracy,
                     'bot': {
-                        'precision': precision_bot,
-                        'recall': recall_bot,
-                        'f_score': f_score_bot
+                        'precision': bot_precision,
+                        'recall': bot_recall,
+                        'f_score': bot_f_score
                     },
                     'human': {
-                        'precision': precision_human,
-                        'recall': recall_human,
-                        'f_score': f_score_human
+                        'precision': human_precision,
+                        'recall': human_recall,
+                        'f_score': human_f_score
                     }
                 }
             }
@@ -177,8 +221,11 @@ class BotDetectionFusion:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize the fusion module with default parameters
-    fusion = BotDetectionFusion(
+    # Dataset paths
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    
+    # Initialize the fusion module for D1 (humans vs moderate bots)
+    fusion_d1 = BotDetectionFusion(
         dataset_type='D1',  # Use D1 dataset parameters for web log detection
         thres_high=0.7,     # Upper threshold for mouse movement score
         thres_low=0.3,      # Lower threshold for mouse movement score
@@ -186,99 +233,37 @@ if __name__ == "__main__":
         weight_wl=0.5       # Weight for web log score
     )
     
-    # Example: Process a single session
-    # result = fusion.process_session(
-    #     session_id='example_session_id',
-    #     web_log_path='path_to_web_logs.log',
-    #     mouse_data_dir='path_to_mouse_data_directory',
-    #     phase='phase1'
-    # )
-    # print(f"Session {result['session_id']} classification: {result['classification']}")
-    # print(f"Web log score: {result['score_wl']}, Mouse movement score: {result['score_mv']}, Fused score: {result['score_tot']}")
+    # Initialize the fusion module for D2 (humans vs advanced bots)
+    fusion_d2 = BotDetectionFusion(
+        dataset_type='D2',  # Use D2 dataset parameters for web log detection
+        thres_high=0.7,
+        thres_low=0.3,
+        weight_mv=0.5,
+        weight_wl=0.5
+    )
     
-    # Example: Evaluate on a dataset
-    # evaluation = fusion.evaluate_dataset(
-    #     dataset_dir='path_to_dataset_directory',
-    #     phase='phase1',
-    #     ground_truth_path='path_to_ground_truth.json'
-    # )
-    # print(f"Accuracy: {evaluation['metrics']['accuracy']}")
-    # print(f"Bot detection - Precision: {evaluation['metrics']['bot']['precision']}, Recall: {evaluation['metrics']['bot']['recall']}, F-score: {evaluation['metrics']['bot']['f_score']}")
-    # print(f"Human detection - Precision: {evaluation['metrics']['human']['precision']}, Recall: {evaluation['metrics']['human']['recall']}, F-score: {evaluation['metrics']['human']['f_score']}")
-
-
-'''
-My project is to create a web bot detections model. The basic idea is to detect a bot based on, 
-first mouse_movements and second from web logs. I need to create 3 files, one file would detect bots from 
-web logs, other would detect web bots from mouse movements and in the third file, the fusion of scores from
-    the previous 2 files will be calulated from which the decision of bot/human will be made.
-
-there is a folder called 'dataset' in the CAPSTONE folder. it is not staged for git dues to its size but i would like 
-to implement it for testing purposes. understand the dataset structure and rewrite the file paths in the codes to 
-make them run on the provided dataset
-
-The Web Bot Detection Dataset is organized into two main folders, phase1 and phase2, each representing a distinct 
-evaluation phase.
-phase1 Folder Structure:
-
-This folder is used for the first evaluation phase and contains two primary subfolders:
-annotations and data.
-annotations Folder: This subfolder stores the labels for the sessions.
-humans_and_moderate_bots: Contains annotation files for sessions involving human and moderate web bot interactions.
-train: A file with session_id and label (human or moderate bot) for training data.
-test: A file with session_id and label (human or moderate bot) for testing data.
-
-humans_and_advanced_bots: Contains annotation files for sessions involving human and advanced web bot interactions.
-train: A file with session_id and label (human or advanced bot) for training data.
-test: A file with session_id and label (human or advanced bot) for testing data.
-
-The train and test files in these annotation folders have two space-separated columns: the PHP session ID and its corresponding annotation (human, moderate bot, or advanced bot).
-data Folder: This subfolder contains the raw web logs and mouse movement data.
-web_logs: Contains web server logs for humans, moderate bots, and advanced bots. These logs follow the Apache2 log format and include the PHP session ID in each request. Examples include
-access_log_1.txt, access_log_2.txt, etc..
-mouse_movements: Contains detailed mouse movement data.
-humans_and_moderate_bots: Holds mouse movement data for human and moderate web bot sessions. Inside this, there are subfolders named after each {session_id}, which contain a mouse_movements.json file.
-humans_and_advanced_bots: Holds mouse movement data for human and advanced web bot sessions. Similarly, it contains subfolders named after each {session_id}, each with a mouse_movements.json file.
-
-Each mouse_movements.json file contains:
-session_id: The PHP session ID.
-total_behaviour: Mouse movement actions like m(x,y) for a move, c(l) for left click, c(r)for right click, and c(m) for middle click.
-mousemove_times: Timestamps of each mouse move in the format {(t0), (t1), ..., (tn)}.
-mousemove_total_behaviour: Coordinates of each mouse point in the format {(x0, y0), (x1, y1), ..., (xn, yn)}.
-
-phase2 Folder Structure: This folder is used for the second evaluation phase and also contains
-annotations and data subfolders.
-annotations Folder: Stores labels for the sessions in this phase.
-humans_and_advanced_bots: Contains an annotations.txt file with session_id and label for human and advanced web bot sessions used in the first part of this phase.
-humans_and_moderate_and_advanced_bots: Contains an annotations.txt file with session_id and label for human, moderate, and advanced web bot sessions used in the second part of this phase.
-
-These  annotations.txt files have two space-separated columns: the PHP session ID and whether the session is a human, moderate bot, or advanced bot.
-data Folder: Contains the raw web logs and mouse movement data for the second phase.
-web_logs: Contains web server logs for humans and bots, structured similarly to phase1 with Apache2 log format and PHP session IDs.
-mouse_movements: Contains mouse movement data exported as JSON collections from a MongoDB instance. Each file, e.g.,
-{session_id}.json, represents a session and includes:
-session_id: The PHP session ID.
-mousemove_client_height_width: Client's browser height and width during each mouse move {(height0, width0), ..., (heightn, widthn)}.
-mousemove_times: Timestamps of each mouse move {(t0), (t1), ..., (tn)}.
-mousemove_total_behaviour: Coordinates of the current mouse point {(x0, y0), ..., (xn, yn)}.
-mousemove_visited_urls: The URL where the mouse move was performed {(url0), (url1), ..., (urln)}
-
-Based on the provided context, the following folders within the dataset structure are similar to D1 and D2:
-
-The data related to D1 (Humans - Moderate bots) would be found in:
-phase1/annotations/humans_and_moderate_bots/train
-phase1/annotations/humans_and_moderate_bots/test
-
-The relevant web logs within phase1/data/web_logs that correspond to the session IDs in the humans_and_moderate_bots annotations.
-phase1/data/mouse_movements/humans_and_moderate_bots
-The data related to D2 (Humans - Advanced bots) would be found in:
-phase1/annotations/humans_and_advanced_bots/train
-phase1/annotations/humans_and_advanced_bots/test
-
-The relevant web logs within phase1/data/web_logs that correspond to the session IDs in the humans_and_advanced_bots annotations.
-phase1/data/mouse_movements/humans_and_advanced_bots use this dataset structure and replace D1 and D2 with corresponding provided paths.
-
-Complete dataset path:
-/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1
-/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase2
-    '''
+    # Example: Process a single session for D1
+    # web_logs_dir = os.path.join(dataset_base, 'data/web_logs')
+    # mouse_data_dir = os.path.join(dataset_base, 'data/mouse_movements')
+    # web_log_files = [f for f in os.listdir(web_logs_dir) if f.endswith('.txt')]
+    # if web_log_files:
+    #     web_log_path = os.path.join(web_logs_dir, web_log_files[0])
+    #     session_id = 'example_session_id'
+    #     result = fusion_d1.process_session(session_id, web_log_path, mouse_data_dir)
+    #     print(f"Session {session_id}: {result}")
+    
+    # Example: Evaluate D1 dataset (humans vs moderate bots)
+    ground_truth_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/test')
+    evaluation_d1 = fusion_d1.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d1)
+    print("D1 Results:")
+    print(f"Accuracy: {evaluation_d1['metrics']['accuracy']:.3f}")
+    print(f"Bot - Precision: {evaluation_d1['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d1['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d1['metrics']['bot']['f_score']:.3f}")
+    print(f"Human - Precision: {evaluation_d1['metrics']['human']['precision']:.3f}, Recall: {evaluation_d1['metrics']['human']['recall']:.3f}, F-score: {evaluation_d1['metrics']['human']['f_score']:.3f}")
+    
+    # Example: Evaluate D2 dataset (humans vs advanced bots)
+    # ground_truth_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/test')
+    # evaluation_d2 = fusion_d2.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d2)
+    # print("\nD2 Results:")
+    # print(f"Accuracy: {evaluation_d2['metrics']['accuracy']:.3f}")
+    # print(f"Bot - Precision: {evaluation_d2['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d2['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d2['metrics']['bot']['f_score']:.3f}")
+    # print(f"Human - Precision: {evaluation_d2['metrics']['human']['precision']:.3f}, Recall: {evaluation_d2['metrics']['human']['recall']:.3f}, F-score: {evaluation_d2['metrics']['human']['f_score']:.3f}")

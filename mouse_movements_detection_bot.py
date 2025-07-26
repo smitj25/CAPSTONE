@@ -88,13 +88,44 @@ class MouseMovementDetectionBot:
             current_group = []
             
             for i in range(len(timestamps)):
-                if i > 0 and float(timestamps[i]) - float(timestamps[i-1]) > 5000:  # 5 seconds gap
-                    if current_group:
-                        page_groups.append(current_group)
-                        current_group = []
-                
-                if i < len(coordinates):
-                    current_group.append((coordinates[i], timestamps[i]))
+                try:
+                    # Handle timestamp parsing with error checking
+                    current_time = float(str(timestamps[i]).replace(',', '.'))
+                    if i > 0:
+                        prev_time = float(str(timestamps[i-1]).replace(',', '.'))
+                        if current_time - prev_time > 5000:  # 5 seconds gap
+                            if current_group:
+                                page_groups.append(current_group)
+                                current_group = []
+                    
+                    if i < len(coordinates):
+                        # Clean coordinate data - handle various formats
+                        coord = coordinates[i]
+                        if isinstance(coord, str):
+                            # Parse coordinate string like "(x,y)" or "x,y"
+                            coord = coord.strip('()')
+                            if ',' in coord:
+                                try:
+                                    x, y = coord.split(',')
+                                    x = float(x.strip())
+                                    y = float(y.strip())
+                                    coord = (x, y)
+                                except ValueError:
+                                    continue  # Skip invalid coordinates
+                        elif isinstance(coord, (list, tuple)) and len(coord) >= 2:
+                            try:
+                                x = float(str(coord[0]).replace(',', '.'))
+                                y = float(str(coord[1]).replace(',', '.'))
+                                coord = (x, y)
+                            except (ValueError, IndexError):
+                                continue  # Skip invalid coordinates
+                        else:
+                            continue  # Skip invalid coordinate formats
+                        
+                        current_group.append((coord, current_time))
+                except (ValueError, TypeError, IndexError) as e:
+                    # Skip problematic entries
+                    continue
             
             if current_group:
                 page_groups.append(current_group)
@@ -246,14 +277,15 @@ class MouseMovementDetectionBot:
         """
         self.model.save(model_path)
 
-    def process_session_data(self, session_id, data_dir, phase='phase1'):
+    def process_session_data(self, session_id, data_dir, phase='phase1', dataset_type='D1'):
         """
         Process mouse movement data for a specific session.
         
         Args:
             session_id (str): PHP session ID
-            data_dir (str): Directory containing the dataset
+            data_dir (str): Directory containing the dataset (should point to mouse_movements folder)
             phase (str): 'phase1' or 'phase2' to specify which dataset format to use
+            dataset_type (str): 'D1' for humans_and_moderate_bots, 'D2' for humans_and_advanced_bots
             
         Returns:
             float: Bot detection score for the session
@@ -261,8 +293,16 @@ class MouseMovementDetectionBot:
         mouse_data = None
         
         if phase == 'phase1':
+            # Determine the correct subfolder based on dataset type
+            if dataset_type == 'D1':
+                subfolder = 'humans_and_moderate_bots'
+            elif dataset_type == 'D2':
+                subfolder = 'humans_and_advanced_bots'
+            else:
+                raise ValueError(f"Unknown dataset type: {dataset_type}. Use 'D1' or 'D2'.")
+            
             # In phase1, each session has its own folder with a mouse_movements.json file
-            session_dir = os.path.join(data_dir, session_id)
+            session_dir = os.path.join(data_dir, subfolder, session_id)
             json_path = os.path.join(session_dir, 'mouse_movements.json')
             
             if os.path.exists(json_path):
@@ -270,8 +310,6 @@ class MouseMovementDetectionBot:
                     mouse_data = json.load(f)
         else:  # phase2
             # In phase2, data is in MongoDB exported JSON collections
-            # We'll assume the data is already loaded and passed as a parameter
-            # This would need to be adapted based on how the data is actually stored
             json_path = os.path.join(data_dir, f'{session_id}.json')
             
             if os.path.exists(json_path):
@@ -285,6 +323,10 @@ class MouseMovementDetectionBot:
 
 # Example usage
 if __name__ == "__main__":
+    # Dataset paths
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    mouse_movements_dir = os.path.join(dataset_base, 'data/mouse_movements')
+    
     # Initialize the mouse movement detector
     detector = MouseMovementDetectionBot()
     
@@ -294,11 +336,21 @@ if __name__ == "__main__":
     # train_labels = np.load('path_to_training_labels.npy')
     # detector.train(train_data, train_labels, epochs=20)
     
-    # Example: Process a session and get a bot detection score
-    # session_id = 'example_session_id'
-    # data_dir = 'path_to_data_directory'
-    # score = detector.process_session_data(session_id, data_dir)
-    # print(f"Bot detection score for session {session_id}: {score}")
+    # Example: Process sessions for D1 (humans vs moderate bots)
+    # annotations_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/train')
+    # with open(annotations_d1, 'r') as f:
+    #     for line in f:
+    #         session_id, label = line.strip().split()
+    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1', dataset_type='D1')
+    #         print(f"Session {session_id} ({label}): Bot score = {score}")
+    
+    # Example: Process sessions for D2 (humans vs advanced bots)
+    # annotations_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/train')
+    # with open(annotations_d2, 'r') as f:
+    #     for line in f:
+    #         session_id, label = line.strip().split()
+    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1', dataset_type='D2')
+    #         print(f"Session {session_id} ({label}): Bot score = {score}")
     
     # Example: Save the trained model
     # detector.save_model('mouse_movement_detector.h5')

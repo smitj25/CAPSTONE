@@ -21,7 +21,7 @@ def test_individual_components():
     print("=== Testing Individual Components ===\n")
     
     # Dataset paths
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1/D1'
     
     # Check if dataset exists
     if not os.path.exists(dataset_base):
@@ -64,7 +64,7 @@ def test_with_sample_session():
     """Test with a sample session if available"""
     print("\n=== Testing with Sample Session ===\n")
     
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1/D1'
     
     # Check for available sessions in D1
     d1_mouse_dir = os.path.join(dataset_base, 'data/mouse_movements/humans_and_moderate_bots')
@@ -121,7 +121,7 @@ def show_dataset_info():
     """Show information about the dataset structure"""
     print("\n=== Dataset Information ===\n")
     
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1/D1'
     
     if not os.path.exists(dataset_base):
         print(f"Dataset not found at: {dataset_base}")

@@ -135,6 +135,7 @@ class BotDetectionFusion:
             # Set up directory paths
             mouse_specific_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'mouse_movements', 'humans_and_moderate_bots')
             web_logs_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'web_logs')
+            human_logs_dir = os.path.join(web_logs_dir, 'humans')
             
             # Get all session IDs from mouse movement data
             session_ids = set()

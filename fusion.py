@@ -74,7 +74,7 @@ class BotDetectionFusion:
         Args:
             session_id (str): PHP session ID
             web_log_path (str): Path to the Apache2 log file
-            mouse_data_dir (str): Directory containing mouse movement data
+            mouse_data_dir (str): Directory containing the dataset (should point to phase1 folder)
             phase (str): 'phase1' or 'phase2' to specify which dataset format to use
             
         Returns:
@@ -84,9 +84,9 @@ class BotDetectionFusion:
         web_log_scores = self.web_log_detector.get_web_log_score(web_log_path)
         score_wl = web_log_scores.get(session_id, 0.5)  # Default to neutral if not found
         
-        # Get mouse movement score
+        # Get mouse movement score (use the same dataset_type as the fusion module)
         score_mv = self.mouse_movement_detector.process_session_data(
-            session_id, mouse_data_dir, phase
+            session_id, mouse_data_dir, phase, dataset_type=self.dataset_type
         )
         
         # Fuse scores
@@ -132,18 +132,9 @@ class BotDetectionFusion:
         
         # Process each session
         if phase == 'phase1':
-            # Determine the correct mouse movement subfolder based on dataset type
-            if self.dataset_type == 'D1':
-                mouse_subfolder = 'humans_and_moderate_bots'
-            elif self.dataset_type == 'D2':
-                mouse_subfolder = 'humans_and_advanced_bots'
-            else:
-                raise ValueError(f"Unknown dataset type: {self.dataset_type}")
-            
             # Set up directory paths
-            mouse_data_dir = os.path.join(dataset_dir, 'data', 'mouse_movements')
-            mouse_specific_dir = os.path.join(mouse_data_dir, mouse_subfolder)
-            web_logs_dir = os.path.join(dataset_dir, 'data', 'web_logs')
+            mouse_specific_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'mouse_movements', 'humans_and_moderate_bots')
+            web_logs_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'web_logs')
             
             # Get all session IDs from mouse movement data
             session_ids = set()
@@ -156,18 +147,24 @@ class BotDetectionFusion:
             # Process each session
             for session_id in session_ids:
                 # Find the appropriate web log file
-                # This is a simplified approach - you might need to implement
-                # a more sophisticated method to match sessions to log files
+                # Determine which log file to use based on session annotations
                 web_log_path = None
                 if os.path.exists(web_logs_dir):
-                    for log_file in os.listdir(web_logs_dir):
-                        if log_file.endswith('.txt'):
-                            web_log_path = os.path.join(web_logs_dir, log_file)
-                            break  # Use the first log file for now
+                    # Check both human and bot log files
+                  for i in range(1, 6):  # access_1.log to access_5.log
+                    log_file = f'access_{i}.log'
+                    human_log = os.path.join(human_logs_dir, log_file)
+                    bot_log = os.path.join(web_logs_dir, 'bots', 'access_moderate_bots.log')
+                    
+                    # Try to find the session in both log files
+                    if os.path.exists(human_log):
+                        web_log_path = human_log
+                    elif os.path.exists(bot_log):
+                        web_log_path = bot_log
                 
                 if web_log_path:
                     session_result = self.process_session(
-                        session_id, web_log_path, mouse_data_dir, phase
+                        session_id, web_log_path, dataset_dir, phase
                     )
                     results[session_id] = session_result
         
@@ -234,6 +231,7 @@ if __name__ == "__main__":
     )
     
     # Initialize the fusion module for D2 (humans vs advanced bots)
+    '''
     fusion_d2 = BotDetectionFusion(
         dataset_type='D2',  # Use D2 dataset parameters for web log detection
         thres_high=0.7,
@@ -241,19 +239,10 @@ if __name__ == "__main__":
         weight_mv=0.5,
         weight_wl=0.5
     )
-    
-    # Example: Process a single session for D1
-    # web_logs_dir = os.path.join(dataset_base, 'data/web_logs')
-    # mouse_data_dir = os.path.join(dataset_base, 'data/mouse_movements')
-    # web_log_files = [f for f in os.listdir(web_logs_dir) if f.endswith('.txt')]
-    # if web_log_files:
-    #     web_log_path = os.path.join(web_logs_dir, web_log_files[0])
-    #     session_id = 'example_session_id'
-    #     result = fusion_d1.process_session(session_id, web_log_path, mouse_data_dir)
-    #     print(f"Session {session_id}: {result}")
+    '''
     
     # Example: Evaluate D1 dataset (humans vs moderate bots)
-    ground_truth_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/test')
+    ground_truth_d1 = os.path.join(dataset_base, 'D1/annotations/humans_and_moderate_bots/test')
     evaluation_d1 = fusion_d1.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d1)
     print("D1 Results:")
     print(f"Accuracy: {evaluation_d1['metrics']['accuracy']:.3f}")
@@ -261,9 +250,11 @@ if __name__ == "__main__":
     print(f"Human - Precision: {evaluation_d1['metrics']['human']['precision']:.3f}, Recall: {evaluation_d1['metrics']['human']['recall']:.3f}, F-score: {evaluation_d1['metrics']['human']['f_score']:.3f}")
     
     # Example: Evaluate D2 dataset (humans vs advanced bots)
-    # ground_truth_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/test')
-    # evaluation_d2 = fusion_d2.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d2)
-    # print("\nD2 Results:")
-    # print(f"Accuracy: {evaluation_d2['metrics']['accuracy']:.3f}")
-    # print(f"Bot - Precision: {evaluation_d2['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d2['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d2['metrics']['bot']['f_score']:.3f}")
-    # print(f"Human - Precision: {evaluation_d2['metrics']['human']['precision']:.3f}, Recall: {evaluation_d2['metrics']['human']['recall']:.3f}, F-score: {evaluation_d2['metrics']['human']['f_score']:.3f}")
+    '''
+    ground_truth_d2 = os.path.join(dataset_base, 'D2/annotations/humans_and_moderate_bots/test')
+    evaluation_d2 = fusion_d2.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d2)
+    print("\nD2 Results:")
+    print(f"Accuracy: {evaluation_d2['metrics']['accuracy']:.3f}")
+    print(f"Bot - Precision: {evaluation_d2['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d2['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d2['metrics']['bot']['f_score']:.3f}")
+    print(f"Human - Precision: {evaluation_d2['metrics']['human']['precision']:.3f}, Recall: {evaluation_d2['metrics']['human']['recall']:.3f}, F-score: {evaluation_d2['metrics']['human']['f_score']:.3f}")
+    '''

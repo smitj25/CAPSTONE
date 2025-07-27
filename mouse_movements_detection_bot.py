@@ -277,14 +277,15 @@ class MouseMovementDetectionBot:
         """
         self.model.save(model_path)
 
-    def process_session_data(self, session_id, data_dir, phase='phase1'):
+    def process_session_data(self, session_id, data_dir, phase='phase1', dataset_type='D1'):
         """
         Process mouse movement data for a specific session.
         
         Args:
             session_id (str): PHP session ID
-            data_dir (str): Directory containing the mouse_movements/humans_and_moderate_bots folder
+            data_dir (str): Directory containing the dataset (should point to phase1 folder)
             phase (str): 'phase1' or 'phase2' to specify which dataset format to use
+            dataset_type (str): 'D1' for humans_and_moderate_bots, 'D2' for humans_and_advanced_bots
             
         Returns:
             float: Bot detection score for the session
@@ -292,8 +293,8 @@ class MouseMovementDetectionBot:
         mouse_data = None
         
         if phase == 'phase1':
-            # For the new D1-focused structure, data is directly in humans_and_moderate_bots
-            session_dir = os.path.join(data_dir, 'humans_and_moderate_bots', session_id)
+            # In phase1, each session has its own folder with a mouse_movements.json file
+            session_dir = os.path.join(data_dir, dataset_type, 'data', 'mouse_movements', 'humans_and_moderate_bots', session_id)
             json_path = os.path.join(session_dir, 'mouse_movements.json')
             
             if os.path.exists(json_path):
@@ -314,34 +315,66 @@ class MouseMovementDetectionBot:
 
 # Example usage
 if __name__ == "__main__":
-    # Dataset paths - Updated for new D1-focused structure
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1/D1'
-    mouse_movements_dir = os.path.join(dataset_base, 'data/mouse_movements')
-    
+    # Dataset paths
+    # Point to the base 'phase1' folder
+    dataset_base_phase1 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    # Point to the base 'phase2' folder if needed
+    '''dataset_base_phase2 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase2'''
+
     # Initialize the mouse movement detector
     detector = MouseMovementDetectionBot()
+
+    # --- Prepare Training Data for D1 (Humans vs Moderate Bots) ---
+    train_matrices_list = []
+    train_labels_list = []
+
+    # Path to D1 annotations train file
+    annotations_d1_train = os.path.join(dataset_base_phase1, 'annotations', 'humans_and_moderate_bots', 'train')
+
+    with open(annotations_d1_train, 'r') as f:
+        for line in f:
+            session_id, label_str = line.strip().split()
+            
+            # Map string label to numerical label (0 for human, 1 for bot)
+            label = 0 if label_str == 'human' else 1 # Assuming 'moderate bot' or 'advanced bot' are 1
+            
+            # Load mouse movement data for this session
+            mouse_data_path = os.path.join(dataset_base_phase1, 'data', 'mouse_movements', 'humans_and_moderate_bots', session_id, 'mouse_movements.json')
+            
+            if os.path.exists(mouse_data_path):
+                with open(mouse_data_path, 'r') as mouse_f:
+                    mouse_data = json.load(mouse_f)
+                    
+                # Preprocess mouse movements into matrices
+                matrices = detector._preprocess_mouse_movements(mouse_data, phase='phase1')
+                
+                # Extend the list with new matrices and their corresponding labels
+                train_matrices_list.extend(matrices)
+                train_labels_list.extend([label] * len(matrices))
+            else:
+                print(f"Warning: Mouse movement data not found for session {session_id} at {mouse_data_path}")
+
+    # Convert lists to numpy arrays for training
+    train_data_array = np.array(train_matrices_list)
+    train_labels_array = np.array(train_labels_list)
     
-    # Example: Train the model with labeled data
-    # This would typically be done with your actual training data
-    # train_data = np.load('path_to_training_matrices.npy')
-    # train_labels = np.load('path_to_training_labels.npy')
-    # detector.train(train_data, train_labels, epochs=20)
-    
+    if train_data_array.size > 0:
+        print(f"Training on {len(train_matrices_list)} matrices with {len(train_labels_list)} labels.")
+        # Complete the detector.train command
+        detector.train(train_data_array, train_labels_array, epochs=10, batch_size=32)
+    else:
+        print("No training data generated. Skipping model training.")
+
     # Example: Process sessions for D1 (humans vs moderate bots)
-    # annotations_file = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/train')
-    # with open(annotations_file, 'r') as f:
-    #     for line in f:
-    #         session_id, label = line.strip().split()
-    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1')
-    #         print(f"Session {session_id} ({label}): Bot score = {score}")
-    
-    # Example: Process test sessions
-    # test_annotations = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/test')
-    # with open(test_annotations, 'r') as f:
-    #     for line in f:
-    #         session_id, label = line.strip().split()
-    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1')
-    #         print(f"Test Session {session_id} ({label}): Bot score = {score}")
+    # This part would typically use the 'test' dataset, but using 'train' for demonstration consistency
+    annotations_d1_test_demo = os.path.join(dataset_base_phase1, 'annotations', 'humans_and_moderate_bots', 'test') # Changed to test for more realistic demo
+    print(f"\n--- Testing on D1 (Humans vs Moderate Bots) ---")
+    with open(annotations_d1_test_demo, 'r') as f:
+        for line in f:
+            session_id, label = line.strip().split()
+            score = detector.process_session_data(session_id, dataset_base_phase1, phase='phase1', dataset_type='D1')
+            print(f"Session {session_id} (Actual: {label}): Bot score = {score:.4f}")
     
     # Example: Save the trained model
-    # detector.save_model('mouse_movement_detector.h5')
+    detector.save_model('mouse_movement_detector.h5')
+    print("\nModel saved to mouse_movement_detector.h5")

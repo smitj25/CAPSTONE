@@ -277,15 +277,14 @@ class MouseMovementDetectionBot:
         """
         self.model.save(model_path)
 
-    def process_session_data(self, session_id, data_dir, phase='phase1', dataset_type='D1'):
+    def process_session_data(self, session_id, data_dir, phase='phase1'):
         """
         Process mouse movement data for a specific session.
         
         Args:
             session_id (str): PHP session ID
-            data_dir (str): Directory containing the dataset (should point to mouse_movements folder)
+            data_dir (str): Directory containing the mouse_movements/humans_and_moderate_bots folder
             phase (str): 'phase1' or 'phase2' to specify which dataset format to use
-            dataset_type (str): 'D1' for humans_and_moderate_bots, 'D2' for humans_and_advanced_bots
             
         Returns:
             float: Bot detection score for the session
@@ -293,16 +292,8 @@ class MouseMovementDetectionBot:
         mouse_data = None
         
         if phase == 'phase1':
-            # Determine the correct subfolder based on dataset type
-            if dataset_type == 'D1':
-                subfolder = 'humans_and_moderate_bots'
-            elif dataset_type == 'D2':
-                subfolder = 'humans_and_advanced_bots'
-            else:
-                raise ValueError(f"Unknown dataset type: {dataset_type}. Use 'D1' or 'D2'.")
-            
-            # In phase1, each session has its own folder with a mouse_movements.json file
-            session_dir = os.path.join(data_dir, subfolder, session_id)
+            # For the new D1-focused structure, data is directly in humans_and_moderate_bots
+            session_dir = os.path.join(data_dir, 'humans_and_moderate_bots', session_id)
             json_path = os.path.join(session_dir, 'mouse_movements.json')
             
             if os.path.exists(json_path):
@@ -323,8 +314,8 @@ class MouseMovementDetectionBot:
 
 # Example usage
 if __name__ == "__main__":
-    # Dataset paths
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
+    # Dataset paths - Updated for new D1-focused structure
+    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1/D1'
     mouse_movements_dir = os.path.join(dataset_base, 'data/mouse_movements')
     
     # Initialize the mouse movement detector
@@ -337,20 +328,20 @@ if __name__ == "__main__":
     # detector.train(train_data, train_labels, epochs=20)
     
     # Example: Process sessions for D1 (humans vs moderate bots)
-    # annotations_d1 = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/train')
-    # with open(annotations_d1, 'r') as f:
+    # annotations_file = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/train')
+    # with open(annotations_file, 'r') as f:
     #     for line in f:
     #         session_id, label = line.strip().split()
-    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1', dataset_type='D1')
+    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1')
     #         print(f"Session {session_id} ({label}): Bot score = {score}")
     
-    # Example: Process sessions for D2 (humans vs advanced bots)
-    # annotations_d2 = os.path.join(dataset_base, 'annotations/humans_and_advanced_bots/train')
-    # with open(annotations_d2, 'r') as f:
+    # Example: Process test sessions
+    # test_annotations = os.path.join(dataset_base, 'annotations/humans_and_moderate_bots/test')
+    # with open(test_annotations, 'r') as f:
     #     for line in f:
     #         session_id, label = line.strip().split()
-    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1', dataset_type='D2')
-    #         print(f"Session {session_id} ({label}): Bot score = {score}")
+    #         score = detector.process_session_data(session_id, mouse_movements_dir, phase='phase1')
+    #         print(f"Test Session {session_id} ({label}): Bot score = {score}")
     
     # Example: Save the trained model
     # detector.save_model('mouse_movement_detector.h5')

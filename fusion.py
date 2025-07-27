@@ -84,9 +84,9 @@ class BotDetectionFusion:
         web_log_scores = self.web_log_detector.get_web_log_score(web_log_path)
         score_wl = web_log_scores.get(session_id, 0.5)  # Default to neutral if not found
         
-        # Get mouse movement score (use the same dataset_type as the fusion module)
+        # Get mouse movement score
         score_mv = self.mouse_movement_detector.process_session_data(
-            session_id, mouse_data_dir, phase, dataset_type=self.dataset_type
+            session_id, mouse_data_dir, phase
         )
         
         # Fuse scores

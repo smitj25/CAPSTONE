@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Log files
+web_logs.json
+mouse_movements.json
+login_attempts.json
+events.json

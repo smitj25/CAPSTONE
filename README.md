@@ -58,7 +58,7 @@ CAPSTONE/
 
 ### Prerequisites
 ```bash
-pip install numpy pandas scikit-learn tensorflow selenium
+pip3 install -r requirements.txt
 ```
 
 ### Training the Models

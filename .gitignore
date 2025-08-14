@@ -1,6 +1,7 @@
 # Ignore all PDF files
 *.pdf
 
+.zencoder/
 # Skip dataset
 dataset/
 # PyCharm specific files

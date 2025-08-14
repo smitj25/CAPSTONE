@@ -25,7 +25,8 @@ build/
 *.njsproj
 *.sln
 *.sw?
-.DS_Store
+.DS_Store/
+.DS_Store?
 Thumbs.db
 
 # ───── Python Bytecode / Cache ─────

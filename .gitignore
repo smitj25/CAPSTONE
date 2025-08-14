@@ -1,4 +1,4 @@
-# Logs
+# ───── Logs ─────
 logs
 *.log
 npm-debug.log*
@@ -7,28 +7,52 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# ───── Dependencies & Build Output ─────
+node_modules/
+dist/
+dist-ssr/
+build/
+.cache/
+.vite/
 *.local
 
-# Editor directories and files
+# ───── Editor & IDE Files ─────
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.DS_Store
+Thumbs.db
 
-dataset/
-
+# ───── Python Bytecode / Cache ─────
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 
+# ───── Virtual Environment ─────
+venv/
+.env/
+.env.local
+.venv/
+.envrc
+
+
+# ───── Browser Drivers ─────
+chromedriver.exe
+
+# ───── Project Folders to Ignore ─────
+dataset/
 Documentation/
 
-.zencoder
-.idea/
-.DS_Store/
+# ───── Service / Build Artifacts ─────
+.zencoder/
+
+# ───── Temporary / Test Artifacts ─────
+*.map
+test-results/
+coverage/

@@ -49,9 +49,6 @@ chromedriver.exe
 dataset/
 Documentation/
 
-# ───── Service / Build Artifacts ─────
-.zencoder/rules
-
 # ───── Temporary / Test Artifacts ─────
 *.map
 test-results/

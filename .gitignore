@@ -50,7 +50,7 @@ dataset/
 Documentation/
 
 # ───── Service / Build Artifacts ─────
-.zencoder/
+.zencoder/rules
 
 # ───── Temporary / Test Artifacts ─────
 *.map

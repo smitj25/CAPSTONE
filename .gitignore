@@ -27,4 +27,8 @@ dataset/
 
 __pycache__/
 
-*.pdf
+Documentation/
+
+.zencoder/
+.idea/
+.DS_Store/

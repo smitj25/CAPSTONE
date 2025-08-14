@@ -236,7 +236,7 @@ class MouseMovementDetectionBot:
         Returns:
             float: Accuracy score
         """
-        if not test_data or len(test_data) == 0:
+        if test_data is None or test_data.size == 0:
             print(f"No {dataset_name} data provided")
             return 0.0
         
@@ -268,64 +268,60 @@ class MouseMovementDetectionBot:
             # Phase 1 structure: dataset_base_path/D1/annotations/humans_and_moderate_bots/train
             if dataset_type == 'D1':
                 annotations_path = os.path.join(dataset_base_path, 'D1', 'annotations', 'humans_and_moderate_bots', data_type)
+                data_base_path = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'humans_and_moderate_bots')
             else:  # D2
                 annotations_path = os.path.join(dataset_base_path, 'D2', 'annotations', 'humans_and_advanced_bots', data_type)
+                data_base_path = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'humans_and_advanced_bots')
             
+            print(f"Loading Phase 1 {dataset_type} {data_type} data...")
+            
+            # Load annotation file
             if os.path.exists(annotations_path):
-                print(f"Loading Phase 1 {dataset_type} {data_type} data...")
                 with open(annotations_path, 'r') as f:
                     for line in f:
-                        session_id, label_str = line.strip().split()
-                        label = 0 if label_str == 'human' else 1
-                        
-                        # Load mouse movement data
-                        if dataset_type == 'D1':
-                            mouse_data_path = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'humans_and_moderate_bots', session_id, 'mouse_movements.json')
-                        else:  # D2
-                            mouse_data_path = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'humans_and_advanced_bots', session_id, 'mouse_movements.json')
-                        
-                        if os.path.exists(mouse_data_path):
-                            with open(mouse_data_path, 'r') as mouse_f:
-                                mouse_data = json.load(mouse_f)
+                        line = line.strip()
+                        if not line:  # Skip empty lines
+                            continue
+                        try:
+                            session_id, label_str = line.split()
+                            label = 0 if label_str == 'human' else 1
                             
-                            # Preprocess mouse movements into matrices
-                            session_matrices = self._preprocess_mouse_movements(mouse_data, phase='phase1')
-                            matrices.extend(session_matrices)
-                            labels.extend([label] * len(session_matrices))
-                        else:
-                            print(f"Warning: Mouse movement data not found for session {session_id}")
+                            # Load corresponding JSON file from session directory
+                            json_file_path = os.path.join(data_base_path, session_id, 'mouse_movements.json')
+                            if os.path.exists(json_file_path):
+                                session_matrices = self._preprocess_mouse_movement_data(json_file_path, session_id)
+                                if session_matrices:
+                                    matrices.extend(session_matrices)
+                                    labels.extend([label] * len(session_matrices))
+                        except ValueError as e:
+                            print(f"Warning: Invalid line format in {annotations_path}: {line}")
+                            continue
+                        except Exception as e:
+                            print(f"Warning: Error processing line in {annotations_path}: {e}")
+                            continue
             else:
-                print(f"Phase 1 {dataset_type} {data_type} annotations not found at {annotations_path}")
+                print(f"Warning: Annotation file not found: {annotations_path}")
         
         elif phase == 'phase2':
-            # Phase 2 structure: separate JSON files for humans and bots
+            # Phase 2 structure: dataset_base_path/D1/data/mouse_movements/humans/mouse_movements_humans.json
+            if dataset_type == 'D1':
+                human_file = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'humans', 'mouse_movements_humans.json')
+                bot_file = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'bots', 'mouse_movements_moderate_bots.json')
+            else:  # D2
+                human_file = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'humans', 'mouse_movements_humans.json')
+                bot_file = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'bot', 'mouse_movements_advanced_bots.json')
+            
             print(f"Loading Phase 2 {dataset_type} {data_type} data...")
             
             # Load human data
-            if dataset_type == 'D1':
-                humans_file = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'humans', 'mouse_movements_humans.json')
-                bots_file = os.path.join(dataset_base_path, 'D1', 'data', 'mouse_movements', 'bots', 'mouse_movements_moderate_bots.json')
-            else:  # D2
-                humans_file = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'humans', 'mouse_movements_humans.json')
-                bots_file = os.path.join(dataset_base_path, 'D2', 'data', 'mouse_movements', 'bot', 'mouse_movements_advanced_bots.json')
+            human_matrices, human_labels = self._load_phase2_raw_data(human_file, 0, data_type)
+            matrices.extend(human_matrices)
+            labels.extend(human_labels)
             
-            # Load and process human data
-            if os.path.exists(humans_file):
-                print(f"Loading human data from {humans_file}")
-                human_matrices, human_labels = self._load_phase2_json_data(humans_file, label=0, data_type=data_type)
-                matrices.extend(human_matrices)
-                labels.extend(human_labels)
-            else:
-                print(f"Warning: Human data file not found at {humans_file}")
-            
-            # Load and process bot data
-            if os.path.exists(bots_file):
-                print(f"Loading bot data from {bots_file}")
-                bot_matrices, bot_labels = self._load_phase2_json_data(bots_file, label=1, data_type=data_type)
-                matrices.extend(bot_matrices)
-                labels.extend(bot_labels)
-            else:
-                print(f"Warning: Bot data file not found at {bots_file}")
+            # Load bot data
+            bot_matrices, bot_labels = self._load_phase2_raw_data(bot_file, 1, data_type)
+            matrices.extend(bot_matrices)
+            labels.extend(bot_labels)
         
         print(f"Loaded {len(matrices)} matrices with {len(labels)} labels from {phase} {dataset_type} {data_type}")
         return matrices, labels
@@ -362,7 +358,8 @@ class MouseMovementDetectionBot:
             
             print(f"Processing {len(lines_to_process)} lines for {data_type} from {len(lines)} total lines")
             
-            for line in lines_to_process:
+            processed_count = 0
+            for i, line in enumerate(lines_to_process):
                 try:
                     # Parse JSON line
                     data = json.loads(line.strip())
@@ -373,15 +370,24 @@ class MouseMovementDetectionBot:
                     
                     # Preprocess URL sequence into matrix
                     session_matrices = self._preprocess_url_sequence(url_sequence, unique_id)
-                    matrices.extend(session_matrices)
-                    labels.extend([label] * len(session_matrices))
+                    
+                    if session_matrices:
+                        matrices.extend(session_matrices)
+                        labels.extend([label] * len(session_matrices))
+                        processed_count += 1
+                    
+                    # Debug: print first few lines
+                    if i < 3:
+                        print(f"  Line {i}: URL sequence length = {len(url_sequence)}, Matrices generated = {len(session_matrices)}")
                     
                 except json.JSONDecodeError as e:
-                    print(f"Warning: Invalid JSON line: {e}")
+                    print(f"Warning: Invalid JSON line {i}: {e}")
                     continue
                 except Exception as e:
-                    print(f"Warning: Error processing line: {e}")
+                    print(f"Warning: Error processing line {i}: {e}")
                     continue
+            
+            print(f"Successfully processed {processed_count} out of {len(lines_to_process)} lines")
                     
         except Exception as e:
             print(f"Error reading file {json_file_path}: {e}")
@@ -412,14 +418,13 @@ class MouseMovementDetectionBot:
             cleaned_urls = []
             for url in urls:
                 url = url.strip('[]"')
-                if url:
+                if url and url.startswith('http'):
                     cleaned_urls.append(url)
             
             if len(cleaned_urls) < 2:
                 return matrices
             
             # Create a matrix representation of URL patterns
-            # We'll use a simplified approach: create a matrix based on URL transitions
             matrix = np.zeros(self.input_shape[:2], dtype=np.float32)
             
             # Analyze URL patterns and transitions
@@ -427,7 +432,7 @@ class MouseMovementDetectionBot:
                 current_url = cleaned_urls[i]
                 next_url = cleaned_urls[i + 1]
                 
-                # Create a simple hash-based position in the matrix
+                # Create a hash-based position in the matrix
                 url_hash = hash(current_url) % (self.input_shape[0] * self.input_shape[1])
                 row = url_hash // self.input_shape[1]
                 col = url_hash % self.input_shape[1]
@@ -440,12 +445,127 @@ class MouseMovementDetectionBot:
                 transition_value = 1.0 if current_url != next_url else 0.5
                 matrix[row, col] = transition_value
             
+            # Add some additional features based on URL patterns
+            # Count different domains
+            domains = set()
+            for url in cleaned_urls:
+                try:
+                    domain = url.split('/')[2] if len(url.split('/')) > 2 else url
+                    domains.add(domain)
+                except:
+                    continue
+            
+            # Add domain diversity as a feature
+            domain_diversity = len(domains) / len(cleaned_urls) if cleaned_urls else 0
+            diversity_row = int(domain_diversity * (self.input_shape[0] - 1))
+            diversity_col = int(domain_diversity * (self.input_shape[1] - 1))
+            matrix[diversity_row, diversity_col] = domain_diversity
+            
+            # Add sequence length as a feature
+            seq_length_norm = min(len(cleaned_urls) / 100.0, 1.0)  # Normalize to 0-1
+            length_row = int(seq_length_norm * (self.input_shape[0] - 1))
+            length_col = int((1 - seq_length_norm) * (self.input_shape[1] - 1))
+            matrix[length_row, length_col] = seq_length_norm
+            
             # Reshape to match input shape (add channel dimension)
             matrix = matrix.reshape(self.input_shape)
             matrices.append(matrix)
             
         except Exception as e:
             print(f"Error preprocessing URL sequence for {unique_id}: {e}")
+        
+        return matrices
+
+    def _load_phase2_raw_data(self, file_path, label, data_type='train'):
+        """
+        Load and preprocess Phase 2 raw URL sequence data.
+        
+        Args:
+            file_path: Path to the file containing URL sequences
+            label: Label for this data (0 for human, 1 for bot)
+            data_type: 'train' or 'test'
+            
+        Returns:
+            tuple: (matrices, labels) - lists of matrices and corresponding labels
+        """
+        matrices = []
+        labels = []
+        
+        try:
+            # Read the file line by line to handle large files
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Split data into train/test if needed
+            if data_type == 'train':
+                # Use 80% for training
+                split_index = int(len(lines) * 0.8)
+                lines_to_process = lines[:split_index]
+            else:  # test
+                # Use 20% for testing
+                split_index = int(len(lines) * 0.8)
+                lines_to_process = lines[split_index:]
+            
+            print(f"Processing {len(lines_to_process)} lines for {data_type} from {len(lines)} total lines")
+            
+            processed_count = 0
+            for i, line in enumerate(lines_to_process):
+                try:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Extract URL sequence from the line
+                    # The line contains a long URL sequence, we need to parse it
+                    url_sequence = line
+                    unique_id = f"phase2_{i}"
+                    
+                    # Preprocess URL sequence into matrix
+                    session_matrices = self._preprocess_url_sequence(url_sequence, unique_id)
+                    
+                    if session_matrices:
+                        matrices.extend(session_matrices)
+                        labels.extend([label] * len(session_matrices))
+                        processed_count += 1
+                    
+                    # Debug: print first few lines
+                    if i < 3:
+                        print(f"  Line {i}: URL sequence length = {len(url_sequence)}, Matrices generated = {len(session_matrices)}")
+                    
+                except Exception as e:
+                    print(f"Warning: Error processing line {i}: {e}")
+                    continue
+            
+            print(f"Successfully processed {processed_count} out of {len(lines_to_process)} lines")
+                    
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+        
+        return matrices, labels
+
+    def _preprocess_mouse_movement_data(self, json_file_path, session_id):
+        """
+        Preprocess mouse movement data from Phase 1 JSON files.
+        
+        Args:
+            json_file_path: Path to the JSON file
+            session_id: Session identifier
+            
+        Returns:
+            list: List of matrices
+        """
+        matrices = []
+        
+        try:
+            with open(json_file_path, 'r') as f:
+                mouse_data = json.load(f)
+            
+            # Preprocess mouse movements into matrices
+            session_matrices = self._preprocess_mouse_movements(mouse_data, phase='phase1')
+            matrices.extend(session_matrices)
+            
+        except Exception as e:
+            print(f"Error preprocessing mouse movement data for {session_id}: {e}")
         
         return matrices
 
@@ -604,11 +724,6 @@ if __name__ == "__main__":
     else:
         print("No Phase 1 D2 training data found.")
 
-    # Save model after Phase 1 training
-    phase1_model_path = 'mouse_movement_detector_phase1_complete.h5'
-    detector.save_model(phase1_model_path)
-    print(f"\nPhase 1 complete model saved to {phase1_model_path}")
-
     # === PHASE 2 INCREMENTAL TRAINING (SECOND STAGE) ===
     print("\n" + "="*60)
     print("PHASE 2 INCREMENTAL TRAINING: D1 (Humans vs Moderate & Advanced Bots)")
@@ -648,8 +763,8 @@ if __name__ == "__main__":
     else:
         print("No Phase 2 D2 training data found.")
 
-    # Save final model
-    final_model_path = 'mouse_movement_detector_all_datasets.h5'
+    # Save final comprehensive model (single file)
+    final_model_path = 'mouse_movement_detector_comprehensive.h5'
     detector.save_model(final_model_path)
     print(f"\nFinal comprehensive model saved to {final_model_path}")
 

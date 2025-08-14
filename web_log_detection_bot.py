@@ -804,7 +804,7 @@ if __name__ == "__main__":
         print("No Phase 2 D2 training data found.")
     
     # Save final comprehensive model (single file)
-    final_model_path = 'web_log_detector_comprehensive.pkl'
+    final_model_path = 'models/web_log_detector_comprehensive.pkl'
     detector.save_model(final_model_path)
     print(f"\nFinal comprehensive model saved to {final_model_path}")
     

@@ -128,14 +128,14 @@ from fusion import BotDetectionFusion
 
 # Initialize fusion with trained models
 fusion = BotDetectionFusion(
-    web_log_model_path='web_log_detector_comprehensive.pkl',
-    mouse_movement_model_path='mouse_movement_detector_comprehensive.h5'
+  web_log_model_path='models/web_log_detector_comprehensive.pkl',
+  mouse_movement_model_path='models/mouse_movement_detector_comprehensive.h5'
 )
 
 # Process a session
 result = fusion.process_session(
-    mouse_score=0.85,      # High bot probability from mouse movements
-    web_log_score=0.45     # Moderate bot probability from web logs
+  mouse_score=0.85,  # High bot probability from mouse movements
+  web_log_score=0.45  # Moderate bot probability from web logs
 )
 
 print(f"Final Classification: {'BOT' if result['is_bot'] else 'HUMAN'}")
@@ -152,28 +152,32 @@ python3 main.py
 ```
 
 **Option 2: Manual Step-by-Step**
+
 ```python
 # Step 1: Train web log detection model
 from web_log_detection_bot import WebLogDetectionBot
+
 web_log_detector = WebLogDetectionBot()
 web_log_detector.train_sequentially()
 
 # Step 2: Train mouse movement detection model
 from mouse_movements_detection_bot import MouseMovementDetectionBot
+
 mouse_detector = MouseMovementDetectionBot()
 mouse_detector.train_sequentially()
 
 # Step 3: Use fusion for final classification
 from fusion import BotDetectionFusion
+
 fusion = BotDetectionFusion(
-    web_log_model_path='web_log_detector_comprehensive.pkl',
-    mouse_movement_model_path='mouse_movement_detector_comprehensive.h5'
+  web_log_model_path='models/web_log_detector_comprehensive.pkl',
+  mouse_movement_model_path='models/mouse_movement_detector_comprehensive.h5'
 )
 
 # Step 4: Detect bot in a session
 result = fusion.process_session(
-    mouse_score=0.75,
-    web_log_score=0.60
+  mouse_score=0.75,
+  web_log_score=0.60
 )
 ```
 

@@ -283,8 +283,8 @@ class BotDetectionFusion:
 if __name__ == "__main__":
     # Initialize fusion module
     fusion = BotDetectionFusion(
-        web_log_model_path='web_log_detector_comprehensive.pkl',
-        mouse_movement_model_path='mouse_movement_detector_comprehensive.h5'
+        web_log_model_path='models/web_log_detector_comprehensive.pkl',
+        mouse_movement_model_path='models/mouse_movement_detector_comprehensive.h5'
     )
     
     # Example session processing

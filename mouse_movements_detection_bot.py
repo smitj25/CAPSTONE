@@ -764,7 +764,7 @@ if __name__ == "__main__":
         print("No Phase 2 D2 training data found.")
 
     # Save final comprehensive model (single file)
-    final_model_path = 'mouse_movement_detector_comprehensive.h5'
+    final_model_path = 'models/mouse_movement_detector_comprehensive.h5'
     detector.save_model(final_model_path)
     print(f"\nFinal comprehensive model saved to {final_model_path}")
 

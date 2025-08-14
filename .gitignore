@@ -29,6 +29,6 @@ __pycache__/
 
 Documentation/
 
-.zencoder/
+.zencoder
 .idea/
 .DS_Store/

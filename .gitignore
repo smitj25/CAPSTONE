@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+dataset/
+
+__pycache__/
+
+*.pdf

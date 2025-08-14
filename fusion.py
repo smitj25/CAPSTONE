@@ -1,261 +1,317 @@
+import numpy as np
+import pickle
 import os
-import json
-from web_log_detection_bot import WebLogDetectionBot
-from mouse_movements_detection_bot import MouseMovementDetectionBot
+import tensorflow as tf
+from typing import Tuple, List, Dict, Union
 
 class BotDetectionFusion:
-    def __init__(self, dataset_type='D1', thres_high=0.7, thres_low=0.3, weight_mv=0.5, weight_wl=0.5):
-        """
-        Initialize the Bot Detection Fusion module with the specified parameters.
-        
-        Args:
-            dataset_type (str): 'D1' or 'D2' to specify which dataset parameters to use for web log detection
-            thres_high (float): Upper threshold for mouse movement score (default: 0.7)
-            thres_low (float): Lower threshold for mouse movement score (default: 0.3)
-            weight_mv (float): Weight for mouse movement score in fusion (default: 0.5)
-            weight_wl (float): Weight for web log score in fusion (default: 0.5)
-        """
-        self.dataset_type = dataset_type
-        self.thres_high = thres_high
-        self.thres_low = thres_low
-        self.weight_mv = weight_mv
-        self.weight_wl = weight_wl
-        
-        # Ensure weights sum to 1
-        total_weight = self.weight_mv + self.weight_wl
-        if total_weight != 1.0:
-            self.weight_mv = self.weight_mv / total_weight
-            self.weight_wl = self.weight_wl / total_weight
-        
-        # Initialize the detection modules
-        self.web_log_detector = WebLogDetectionBot(dataset_type=dataset_type)
-        self.mouse_movement_detector = MouseMovementDetectionBot()
+    """
+    Fusion module that combines scores from web log and mouse movement detection modules
+    to produce a final, robust decision about whether a session is from a human or bot.
     
-    def fuse_scores(self, score_mv, score_wl):
+    This implements the decision-level fusion method described in the research paper:
+    - If mouse movement score is very high (>0.7) or very low (<0.3), rely solely on it
+    - Otherwise, use weighted average of both scores (0.5 * mouse + 0.5 * web_log)
+    """
+    
+    def __init__(self, 
+                 web_log_model_path: str = None,
+                 mouse_movement_model_path: str = None,
+                 high_threshold: float = 0.7,
+                 low_threshold: float = 0.3,
+                 final_threshold: float = 0.5,
+                 mouse_weight: float = 0.5,
+                 web_log_weight: float = 0.5):
         """
-        Fuse the scores from the mouse movement and web log detection modules.
-        
-        The fusion mechanism prioritizes the mouse movement detection module:
-        - If score_mv is either very high (≥thres_high) or very low (≤thres_low), 
-          only this score is considered for the final decision.
-        - Otherwise, a weighted average of the two modules' scores is used.
+        Initialize the fusion module.
         
         Args:
-            score_mv (float): Score from the mouse movement detection module (0-1)
-            score_wl (float): Score from the web log detection module (0-1)
+            web_log_model_path: Path to the trained web log detection model
+            mouse_movement_model_path: Path to the trained mouse movement detection model
+            high_threshold: High threshold for mouse movement score (default: 0.7)
+            low_threshold: Low threshold for mouse movement score (default: 0.3)
+            final_threshold: Final decision threshold (default: 0.5)
+            mouse_weight: Weight for mouse movement score in fusion (default: 0.5)
+            web_log_weight: Weight for web log score in fusion (default: 0.5)
+        """
+        self.high_threshold = high_threshold
+        self.low_threshold = low_threshold
+        self.final_threshold = final_threshold
+        self.mouse_weight = mouse_weight
+        self.web_log_weight = web_log_weight
+        
+        # Load models if paths are provided
+        self.web_log_model = None
+        self.mouse_movement_model = None
+        
+        if web_log_model_path and os.path.exists(web_log_model_path):
+            self.load_web_log_model(web_log_model_path)
+            
+        if mouse_movement_model_path and os.path.exists(mouse_movement_model_path):
+            self.load_mouse_movement_model(mouse_movement_model_path)
+    
+    def load_web_log_model(self, model_path: str):
+        """
+        Load the trained web log detection model.
+        
+        Args:
+            model_path: Path to the saved web log model
+        """
+        try:
+            with open(model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            self.web_log_model = model_data['model']
+            self.web_log_scaler = model_data['scaler']
+            self.web_log_features = model_data['selected_features']
+            print(f"Web log model loaded from {model_path}")
+        except Exception as e:
+            print(f"Error loading web log model: {e}")
+    
+    def load_mouse_movement_model(self, model_path: str):
+        """
+        Load the trained mouse movement detection model.
+        
+        Args:
+            model_path: Path to the saved mouse movement model
+        """
+        try:
+            self.mouse_movement_model = tf.keras.models.load_model(model_path)
+            print(f"Mouse movement model loaded from {model_path}")
+        except Exception as e:
+            print(f"Error loading mouse movement model: {e}")
+    
+    def predict_web_log_score(self, web_log_data) -> float:
+        """
+        Predict bot probability using the web log detection model.
+        
+        Args:
+            web_log_data: Web log features for a session
             
         Returns:
-            float: Fused score between 0 and 1 (0 = human, 1 = bot)
+            float: Bot probability score (0-1)
         """
-        # Prioritize mouse movement score if it's very high or very low
-        if score_mv >= self.thres_high or score_mv <= self.thres_low:
-            return score_mv
+        if self.web_log_model is None:
+            raise ValueError("Web log model not loaded. Please load the model first.")
         
-        # Otherwise, use weighted average
-        return (self.weight_mv * score_mv) + (self.weight_wl * score_wl)
+        try:
+            # Select features and scale
+            selected_features = web_log_data[self.web_log_features]
+            scaled_features = self.web_log_scaler.transform(selected_features)
+            
+            # Predict probability
+            probabilities = self.web_log_model.predict_proba(scaled_features)
+            return probabilities[0][1]  # Return bot probability
+        except Exception as e:
+            print(f"Error predicting web log score: {e}")
+            return 0.5  # Return neutral score on error
     
-    def classify(self, score_tot, threshold=0.5):
+    def predict_mouse_movement_score(self, mouse_movement_matrices: List[np.ndarray]) -> float:
         """
-        Classify a session as bot or human based on the total score.
+        Predict bot probability using the mouse movement detection model.
         
         Args:
-            score_tot (float): Total fused score
-            threshold (float): Classification threshold (default: 0.5)
+            mouse_movement_matrices: List of mouse movement matrices for a session
             
         Returns:
-            str: 'bot' if score_tot ≥ threshold, 'human' otherwise
+            float: Bot probability score (0-1)
         """
-        return 'bot' if score_tot >= threshold else 'human'
+        if self.mouse_movement_model is None:
+            raise ValueError("Mouse movement model not loaded. Please load the model first.")
+        
+        try:
+            if not mouse_movement_matrices:
+                return 0.5  # Return neutral score if no matrices
+            
+            # Convert matrices to the expected format
+            matrices = np.array(mouse_movement_matrices)
+            
+            # Ensure matrices have the correct shape (add channel dimension if needed)
+            if len(matrices.shape) == 3:
+                matrices = matrices.reshape(matrices.shape[0], matrices.shape[1], matrices.shape[2], 1)
+            
+            # Predict probabilities for each matrix
+            probabilities = self.mouse_movement_model.predict(matrices)
+            
+            # Perform majority voting across all matrices
+            bot_votes = np.sum(probabilities[:, 1] > 0.5)
+            total_votes = len(probabilities)
+            
+            # Return the ratio of bot votes
+            return bot_votes / total_votes if total_votes > 0 else 0.5
+            
+        except Exception as e:
+            print(f"Error predicting mouse movement score: {e}")
+            return 0.5  # Return neutral score on error
     
-    def process_session(self, session_id, web_log_path, mouse_data_dir, phase='phase1'):
+    def fuse_scores(self, mouse_score: float, web_log_score: float) -> float:
         """
-        Process a session using both detection modules and fuse their scores.
+        Fuse the scores from both detection modules using the decision-level fusion method.
         
         Args:
-            session_id (str): PHP session ID
-            web_log_path (str): Path to the Apache2 log file
-            mouse_data_dir (str): Directory containing the dataset (should point to phase1 folder)
-            phase (str): 'phase1' or 'phase2' to specify which dataset format to use
+            mouse_score: Bot probability from mouse movement detection (0-1)
+            web_log_score: Bot probability from web log detection (0-1)
             
         Returns:
-            dict: Dictionary containing individual scores, fused score, and classification
+            float: Final fused bot probability score (0-1)
         """
-        # Get web log score
-        web_log_scores = self.web_log_detector.get_web_log_score(web_log_path)
-        score_wl = web_log_scores.get(session_id, 0.5)  # Default to neutral if not found
+        # Check if mouse movement score is very high or very low
+        if mouse_score > self.high_threshold or mouse_score < self.low_threshold:
+            # Rely solely on mouse movement score
+            print(f"Mouse score ({mouse_score:.3f}) outside thresholds [{self.low_threshold}, {self.high_threshold}]. Using mouse score only.")
+            return mouse_score
+        else:
+            # Use weighted average of both scores
+            fused_score = (self.mouse_weight * mouse_score + 
+                          self.web_log_weight * web_log_score)
+            print(f"Mouse score ({mouse_score:.3f}) within thresholds. Using weighted average: {fused_score:.3f}")
+            return fused_score
+    
+    def classify_session(self, mouse_score: float, web_log_score: float) -> Tuple[bool, float]:
+        """
+        Classify a session as human or bot based on fused scores.
         
-        # Get mouse movement score (use the same dataset_type as the fusion module)
-        score_mv = self.mouse_movement_detector.process_session_data(
-            session_id, mouse_data_dir, phase, dataset_type=self.dataset_type
-        )
+        Args:
+            mouse_score: Bot probability from mouse movement detection (0-1)
+            web_log_score: Bot probability from web log detection (0-1)
+            
+        Returns:
+            Tuple[bool, float]: (is_bot, final_score)
+                - is_bot: True if classified as bot, False if human
+                - final_score: Final fused bot probability score
+        """
+        # Fuse the scores
+        final_score = self.fuse_scores(mouse_score, web_log_score)
         
-        # Fuse scores
-        score_tot = self.fuse_scores(score_mv, score_wl)
+        # Make final decision
+        is_bot = final_score > self.final_threshold
         
-        # Classify
-        classification = self.classify(score_tot)
+        return is_bot, final_score
+    
+    def process_session(self, 
+                       web_log_features=None, 
+                       mouse_movement_matrices=None,
+                       mouse_score=None,
+                       web_log_score=None) -> Dict[str, Union[bool, float]]:
+        """
+        Process a complete session and return classification results.
+        
+        Args:
+            web_log_features: Web log features for the session (optional if web_log_score provided)
+            mouse_movement_matrices: Mouse movement matrices for the session (optional if mouse_score provided)
+            mouse_score: Pre-computed mouse movement score (optional)
+            web_log_score: Pre-computed web log score (optional)
+            
+        Returns:
+            Dict containing:
+                - is_bot: Final classification (True/False)
+                - final_score: Final fused score
+                - mouse_score: Mouse movement score used
+                - web_log_score: Web log score used
+                - fusion_method: Method used for fusion ("mouse_only" or "weighted_average")
+        """
+        # Get scores (either from models or provided directly)
+        if mouse_score is None and mouse_movement_matrices is not None:
+            mouse_score = self.predict_mouse_movement_score(mouse_movement_matrices)
+        elif mouse_score is None:
+            mouse_score = 0.5  # Default neutral score
+        
+        if web_log_score is None and web_log_features is not None:
+            web_log_score = self.predict_web_log_score(web_log_features)
+        elif web_log_score is None:
+            web_log_score = 0.5  # Default neutral score
+        
+        # Determine fusion method
+        if mouse_score > self.high_threshold or mouse_score < self.low_threshold:
+            fusion_method = "mouse_only"
+        else:
+            fusion_method = "weighted_average"
+        
+        # Fuse scores and classify
+        is_bot, final_score = self.classify_session(mouse_score, web_log_score)
         
         return {
-            'session_id': session_id,
-            'score_wl': score_wl,
-            'score_mv': score_mv,
-            'score_tot': score_tot,
-            'classification': classification
+            'is_bot': is_bot,
+            'final_score': final_score,
+            'mouse_score': mouse_score,
+            'web_log_score': web_log_score,
+            'fusion_method': fusion_method
         }
     
-    def evaluate_dataset(self, dataset_dir, phase='phase1', ground_truth_path=None):
+    def evaluate_fusion_performance(self, 
+                                  test_sessions: List[Dict],
+                                  true_labels: List[bool]) -> Dict[str, float]:
         """
-        Evaluate the fusion model on a dataset.
+        Evaluate the performance of the fusion system.
         
         Args:
-            dataset_dir (str): Directory containing the dataset (should be the phase1 or phase2 folder)
-            phase (str): 'phase1' or 'phase2' to specify which dataset format to use
-            ground_truth_path (str): Path to the ground truth annotations file (optional)
+            test_sessions: List of session data dictionaries
+            true_labels: List of true labels (True for bot, False for human)
             
         Returns:
-            dict: Dictionary containing evaluation metrics if ground truth is provided,
-                  otherwise just the classification results
+            Dict containing performance metrics
         """
-        results = {}
+        predictions = []
+        final_scores = []
         
-        # Load ground truth if provided
-        ground_truth = {}
-        if ground_truth_path and os.path.exists(ground_truth_path):
-            with open(ground_truth_path, 'r') as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        session_id = parts[0]
-                        label = parts[1]
-                        # Convert labels to binary: 1 for any bot type, 0 for human
-                        ground_truth[session_id] = 1 if 'bot' in label.lower() else 0
+        for session in test_sessions:
+            result = self.process_session(**session)
+            predictions.append(result['is_bot'])
+            final_scores.append(result['final_score'])
         
-        # Process each session
-        if phase == 'phase1':
-            # Set up directory paths
-            mouse_specific_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'mouse_movements', 'humans_and_moderate_bots')
-            web_logs_dir = os.path.join(dataset_dir, self.dataset_type, 'data', 'web_logs')
-            human_logs_dir = os.path.join(web_logs_dir, 'humans')
-            
-            # Get all session IDs from mouse movement data
-            session_ids = set()
-            if os.path.exists(mouse_specific_dir):
-                for item in os.listdir(mouse_specific_dir):
-                    item_path = os.path.join(mouse_specific_dir, item)
-                    if os.path.isdir(item_path):
-                        session_ids.add(item)
-            
-            # Process each session
-            for session_id in session_ids:
-                # Find the appropriate web log file
-                # Determine which log file to use based on session annotations
-                web_log_path = None
-                if os.path.exists(web_logs_dir):
-                    # Check both human and bot log files
-                  for i in range(1, 6):  # access_1.log to access_5.log
-                    log_file = f'access_{i}.log'
-                    human_log = os.path.join(human_logs_dir, log_file)
-                    bot_log = os.path.join(web_logs_dir, 'bots', 'access_moderate_bots.log')
-                    
-                    # Try to find the session in both log files
-                    if os.path.exists(human_log):
-                        web_log_path = human_log
-                    elif os.path.exists(bot_log):
-                        web_log_path = bot_log
-                
-                if web_log_path:
-                    session_result = self.process_session(
-                        session_id, web_log_path, dataset_dir, phase
-                    )
-                    results[session_id] = session_result
+        # Calculate metrics
+        correct = sum(1 for pred, true in zip(predictions, true_labels) if pred == true)
+        accuracy = correct / len(true_labels) if true_labels else 0
         
-        # Calculate metrics if ground truth is available
-        if ground_truth:
-            tp = fp = tn = fn = 0
-            
-            for session_id, result in results.items():
-                if session_id in ground_truth:
-                    predicted = 1 if result['classification'] == 'bot' else 0
-                    actual = ground_truth[session_id]
-                    
-                    if predicted == 1 and actual == 1:
-                        tp += 1
-                    elif predicted == 1 and actual == 0:
-                        fp += 1
-                    elif predicted == 0 and actual == 0:
-                        tn += 1
-                    elif predicted == 0 and actual == 1:
-                        fn += 1
-            
-            # Calculate metrics
-            accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-            
-            bot_precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-            bot_recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            bot_f_score = 2 * (bot_precision * bot_recall) / (bot_precision + bot_recall) if (bot_precision + bot_recall) > 0 else 0
-            
-            human_precision = tn / (tn + fn) if (tn + fn) > 0 else 0
-            human_recall = tn / (tn + fp) if (tn + fp) > 0 else 0
-            human_f_score = 2 * (human_precision * human_recall) / (human_precision + human_recall) if (human_precision + human_recall) > 0 else 0
-            
-            return {
-                'results': results,
-                'metrics': {
-                    'accuracy': accuracy,
-                    'bot': {
-                        'precision': bot_precision,
-                        'recall': bot_recall,
-                        'f_score': bot_f_score
-                    },
-                    'human': {
-                        'precision': human_precision,
-                        'recall': human_recall,
-                        'f_score': human_f_score
-                    }
-                }
-            }
+        # Calculate precision, recall, F1-score
+        tp = sum(1 for pred, true in zip(predictions, true_labels) if pred and true)
+        fp = sum(1 for pred, true in zip(predictions, true_labels) if pred and not true)
+        fn = sum(1 for pred, true in zip(predictions, true_labels) if not pred and true)
         
-        return {'results': results}
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        return {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1_score,
+            'total_sessions': len(true_labels)
+        }
 
-# Example usage
+# Example usage and testing
 if __name__ == "__main__":
-    # Dataset paths
-    dataset_base = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
-    
-    # Initialize the fusion module for D1 (humans vs moderate bots)
-    fusion_d1 = BotDetectionFusion(
-        dataset_type='D1',  # Use D1 dataset parameters for web log detection
-        thres_high=0.7,     # Upper threshold for mouse movement score
-        thres_low=0.3,      # Lower threshold for mouse movement score
-        weight_mv=0.5,      # Weight for mouse movement score
-        weight_wl=0.5       # Weight for web log score
+    # Initialize fusion module
+    fusion = BotDetectionFusion(
+        web_log_model_path='web_log_detector_comprehensive.pkl',
+        mouse_movement_model_path='mouse_movement_detector_comprehensive.h5'
     )
     
-    # Initialize the fusion module for D2 (humans vs advanced bots)
-    '''
-    fusion_d2 = BotDetectionFusion(
-        dataset_type='D2',  # Use D2 dataset parameters for web log detection
-        thres_high=0.7,
-        thres_low=0.3,
-        weight_mv=0.5,
-        weight_wl=0.5
+    # Example session processing
+    print("=== Bot Detection Fusion System ===")
+    
+    # Example 1: High confidence mouse movement score
+    print("\n--- Example 1: High confidence mouse movement ---")
+    result1 = fusion.process_session(
+        mouse_score=0.85,  # Very high bot probability from mouse movements
+        web_log_score=0.45  # Moderate bot probability from web logs
     )
-    '''
+    print(f"Result: {result1}")
     
-    # Example: Evaluate D1 dataset (humans vs moderate bots)
-    ground_truth_d1 = os.path.join(dataset_base, 'D1/annotations/humans_and_moderate_bots/test')
-    evaluation_d1 = fusion_d1.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d1)
-    print("D1 Results:")
-    print(f"Accuracy: {evaluation_d1['metrics']['accuracy']:.3f}")
-    print(f"Bot - Precision: {evaluation_d1['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d1['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d1['metrics']['bot']['f_score']:.3f}")
-    print(f"Human - Precision: {evaluation_d1['metrics']['human']['precision']:.3f}, Recall: {evaluation_d1['metrics']['human']['recall']:.3f}, F-score: {evaluation_d1['metrics']['human']['f_score']:.3f}")
+    # Example 2: Low confidence mouse movement score
+    print("\n--- Example 2: Low confidence mouse movement ---")
+    result2 = fusion.process_session(
+        mouse_score=0.15,  # Very low bot probability from mouse movements
+        web_log_score=0.65  # High bot probability from web logs
+    )
+    print(f"Result: {result2}")
     
-    # Example: Evaluate D2 dataset (humans vs advanced bots)
-    '''
-    ground_truth_d2 = os.path.join(dataset_base, 'D2/annotations/humans_and_moderate_bots/test')
-    evaluation_d2 = fusion_d2.evaluate_dataset(dataset_base, phase='phase1', ground_truth_path=ground_truth_d2)
-    print("\nD2 Results:")
-    print(f"Accuracy: {evaluation_d2['metrics']['accuracy']:.3f}")
-    print(f"Bot - Precision: {evaluation_d2['metrics']['bot']['precision']:.3f}, Recall: {evaluation_d2['metrics']['bot']['recall']:.3f}, F-score: {evaluation_d2['metrics']['bot']['f_score']:.3f}")
-    print(f"Human - Precision: {evaluation_d2['metrics']['human']['precision']:.3f}, Recall: {evaluation_d2['metrics']['human']['recall']:.3f}, F-score: {evaluation_d2['metrics']['human']['f_score']:.3f}")
-    '''
+    # Example 3: Moderate mouse movement score (use weighted average)
+    print("\n--- Example 3: Moderate mouse movement (weighted average) ---")
+    result3 = fusion.process_session(
+        mouse_score=0.55,  # Moderate bot probability from mouse movements
+        web_log_score=0.60  # Moderate bot probability from web logs
+    )
+    print(f"Result: {result3}")
+    
+    print("\n=== Fusion System Ready ===")

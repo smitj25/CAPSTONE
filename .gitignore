@@ -48,6 +48,7 @@ chromedriver.exe
 # ───── Project Folders to Ignore ─────
 dataset/
 Documentation/
+.zencoder/
 
 # ───── Temporary / Test Artifacts ─────
 *.map

@@ -70,15 +70,32 @@ python3 web_log_detection_bot.py
 python3 mouse_movements_detection_bot.py
 ```
 
-### Testing the Fusion System
+### Running the Complete System
 ```bash
+# Run the main system (trains models and demonstrates fusion)
+python3 main.py
+
 # Test fusion logic with example scenarios
 python3 fusion.py
 ```
 
 ## 🔧 Usage Examples
 
-### 1. Individual Module Usage
+### 1. Complete System Usage (Recommended)
+
+**Using the Main System:**
+```python
+# Run the complete system with all components
+python3 main.py
+```
+
+The main system will:
+- Train web log detection model on all phases
+- Train mouse movement detection model on all phases
+- Demonstrate fusion logic with example scenarios
+- Show example session detection results
+
+### 2. Individual Module Usage
 
 **Web Log Detection:**
 ```python
@@ -128,6 +145,13 @@ print(f"Fusion Method: {result['fusion_method']}")
 
 ### 3. Complete Workflow Example
 
+**Option 1: Using Main System (Simplest)**
+```bash
+# Run everything with one command
+python3 main.py
+```
+
+**Option 2: Manual Step-by-Step**
 ```python
 # Step 1: Train web log detection model
 from web_log_detection_bot import WebLogDetectionBot
@@ -225,6 +249,9 @@ The system achieves robust performance through:
 
 ### Testing
 ```bash
+# Test the complete system (recommended)
+python3 main.py
+
 # Test individual components
 python3 web_log_detection_bot.py
 python3 mouse_movements_detection_bot.py

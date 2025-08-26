@@ -13,6 +13,8 @@ import {
 } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
+
+
 // Create a modern theme with improved color palette
 const modernTheme = createTheme({
   palette: {
@@ -652,6 +654,8 @@ const LoginPage = () => {
                   </Box>
                 </Box>
               </Box>
+
+
               
               <Typography 
                 variant="body2" 

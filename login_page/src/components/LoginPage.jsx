@@ -14,6 +14,17 @@ import {
 } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import MLDetectionMonitor from './MLDetectionMonitor';
+import VisualCaptcha from './VisualCaptcha';
+import BotDetectionAlert from './BotDetectionAlert';
+import HoneypotAlert from './HoneypotAlert';
+import { 
+  executeRecaptchaPageView, 
+  executeRecaptchaLogin, 
+  executeRecaptchaFormInteraction,
+  analyzeRecaptchaScore,
+  combineRecaptchaWithML,
+  isRecaptchaReady
+} from '../utils/recaptcha';
 
 
 
@@ -248,10 +259,29 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCaptcha, setShowCaptcha] = useState(false);
+  const [showVisualCaptcha, setShowVisualCaptcha] = useState(false);
+  const [showBotDetectionAlert, setShowBotDetectionAlert] = useState(false);
+  const [showHoneypotAlert, setShowHoneypotAlert] = useState(false);
+  const [honeypotValue, setHoneypotValue] = useState('');
+  const [botDetectionConfidence, setBotDetectionConfidence] = useState(0);
   const [captchaValue, setCaptchaValue] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
   const [isValidating, setIsValidating] = useState(false);
+  const [captchaDifficulty, setCaptchaDifficulty] = useState('medium');
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const [recaptchaScore, setRecaptchaScore] = useState(null);
+  const [recaptchaAnalysis, setRecaptchaAnalysis] = useState(null);
+  const [isRecaptchaLoading, setIsRecaptchaLoading] = useState(false);
+
+  // Behavior signals buffers (not in state to avoid re-renders)
+  const behaviorRef = React.useRef({
+    keyTimestamps: [],
+    lastKeyTime: null,
+    clickTrusted: [],
+    scrollDeltas: [],
+    focusBlurCount: 0
+  });
 
   useEffect(() => {
     // Track mouse movements
@@ -261,6 +291,28 @@ const LoginPage = ({ onLoginSuccess }) => {
 
     document.addEventListener('mousemove', handleMouseMove);
     return () => document.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  // Initialize reCAPTCHA on component mount
+  useEffect(() => {
+    const initializeRecaptcha = async () => {
+      if (isRecaptchaReady()) {
+        try {
+          setIsRecaptchaLoading(true);
+          const token = await executeRecaptchaPageView();
+          setRecaptchaToken(token);
+          console.log('reCAPTCHA v3 initialized successfully');
+        } catch (error) {
+          console.error('reCAPTCHA initialization failed:', error);
+        } finally {
+          setIsRecaptchaLoading(false);
+        }
+      }
+    };
+
+    // Wait a bit for reCAPTCHA to load
+    const timer = setTimeout(initializeRecaptcha, 1000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Auto-trigger ML analysis when component mounts or when Aadhaar number is entered
@@ -297,6 +349,85 @@ const LoginPage = ({ onLoginSuccess }) => {
       }
     };
   }, [sessionId]); // Only depend on sessionId, not mouseMovements
+
+  // Capture additional behavioral signals for ML (keystrokes, clicks, focus/blur, scroll)
+  useEffect(() => {
+    const handleKeyDown = () => {
+      const now = performance.now();
+      if (behaviorRef.current.lastKeyTime != null) {
+        behaviorRef.current.keyTimestamps.push(now - behaviorRef.current.lastKeyTime);
+      }
+      behaviorRef.current.lastKeyTime = now;
+    };
+
+    const handleClick = (e) => {
+      // e.isTrusted is false for synthetic/JS-triggered events
+      behaviorRef.current.clickTrusted.push(Boolean(e.isTrusted));
+    };
+
+    const handleScroll = () => {
+      // Capture rough scroll delta using pageYOffset
+      const y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      const prev = behaviorRef.current._lastScrollY ?? y;
+      behaviorRef.current.scrollDeltas.push(Math.abs(y - prev));
+      behaviorRef.current._lastScrollY = y;
+    };
+
+    const handleFocus = () => { behaviorRef.current.focusBlurCount += 1; };
+    const handleBlur = () => { behaviorRef.current.focusBlurCount += 1; };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('click', handleClick, true);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('focus', handleFocus, true);
+    window.addEventListener('blur', handleBlur, true);
+
+    const flushInterval = setInterval(() => {
+      // Build a snapshot and reset buffers
+      const snapshot = {
+        sessionId,
+        avgKeyInterval: behaviorRef.current.keyTimestamps.length
+          ? behaviorRef.current.keyTimestamps.reduce((a, b) => a + b, 0) / behaviorRef.current.keyTimestamps.length
+          : null,
+        untrustedClickRatio: behaviorRef.current.clickTrusted.length
+          ? behaviorRef.current.clickTrusted.filter(v => !v).length / behaviorRef.current.clickTrusted.length
+          : null,
+        scrollVariance: behaviorRef.current.scrollDeltas.length
+          ? (() => {
+              const arr = behaviorRef.current.scrollDeltas;
+              const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+              const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+              return variance;
+            })()
+          : null,
+        focusBlurCount: behaviorRef.current.focusBlurCount
+      };
+
+      // Reset buffers
+      behaviorRef.current.keyTimestamps = [];
+      behaviorRef.current.clickTrusted = [];
+      behaviorRef.current.scrollDeltas = [];
+      behaviorRef.current.focusBlurCount = 0;
+
+      // Send only if we have any data
+      if (snapshot.avgKeyInterval !== null || snapshot.untrustedClickRatio !== null || snapshot.scrollVariance !== null || snapshot.focusBlurCount > 0) {
+        fetch('/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ behaviorSignals: snapshot })
+        }).catch(() => {});
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(flushInterval);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('click', handleClick, true);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('focus', handleFocus, true);
+      window.removeEventListener('blur', handleBlur, true);
+    };
+  }, [sessionId]);
   
   // Function to save mouse movements to server
   const saveMouseMovements = () => {
@@ -350,6 +481,12 @@ const LoginPage = ({ onLoginSuccess }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    
+    // Debug logging for honeypot field changes
+    if (name === 'honeypotField') {
+      console.log('🍯 HONEYPOT FIELD CHANGED:', { name, value, timestamp: new Date().toISOString() });
+    }
+    
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -361,6 +498,16 @@ const LoginPage = ({ onLoginSuccess }) => {
         ...prev,
         [name]: ''
       }));
+    }
+
+    // Execute reCAPTCHA on form interaction
+    if (name === 'aadhaarNumber' && value.length > 0) {
+      executeRecaptchaFormInteraction().then(token => {
+        setRecaptchaToken(token);
+        console.log('reCAPTCHA executed on form interaction');
+      }).catch(error => {
+        console.error('reCAPTCHA form interaction failed:', error);
+      });
     }
 
     // Log input events
@@ -433,9 +580,19 @@ const LoginPage = ({ onLoginSuccess }) => {
     if (results && results.loginAttempts && results.loginAttempts.length > 0) {
       const lastAttempt = results.loginAttempts[results.loginAttempts.length - 1];
       if (lastAttempt.classification === 'BOT') {
-        console.log('🚨 BOT DETECTED! Showing CAPTCHA...');
-        setShowCaptcha(true);
-        setCaptchaValue(generateCaptcha());
+        console.log('🚨 BOT DETECTED! Showing Gamified CAPTCHA...');
+        
+        // Determine difficulty based on bot score
+        const botScore = lastAttempt.fusionScore || lastAttempt.mouseScore || 0.5;
+        if (botScore > 0.8) {
+          setCaptchaDifficulty('hard');
+        } else if (botScore > 0.6) {
+          setCaptchaDifficulty('medium');
+        } else {
+          setCaptchaDifficulty('easy');
+        }
+        
+        setShowGamifiedCaptcha(true);
         return true;
       }
     }
@@ -453,6 +610,59 @@ const LoginPage = ({ onLoginSuccess }) => {
     }
   };
 
+  const handleVisualCaptchaSuccess = () => {
+    console.log('🎉 Visual CAPTCHA completed successfully!');
+    setShowVisualCaptcha(false);
+    setValidationErrors({});
+    
+    // Proceed with login after successful CAPTCHA
+    if (onLoginSuccess) {
+      onLoginSuccess({
+        aadhaarNumber: formData.aadhaarNumber.replace(/\s/g, ''),
+        sessionId: sessionId,
+        loginTime: new Date().toISOString(),
+        botDetectionResults: botDetectionResults,
+        captchaCompleted: true
+      });
+    }
+  };
+
+  const handleVisualCaptchaClose = () => {
+    setShowVisualCaptcha(false);
+    setValidationErrors({ general: 'Human verification required to continue.' });
+  };
+
+  // Bot Detection Alert handlers
+  const handleBotDetectionAlertClose = () => {
+    setShowBotDetectionAlert(false);
+  };
+
+  const handleBotDetectionAlertProceed = () => {
+    setShowBotDetectionAlert(false);
+    setShowVisualCaptcha(true);
+  };
+
+  // Honeypot Alert handlers
+  const handleHoneypotAlertClose = () => {
+    setShowHoneypotAlert(false);
+  };
+
+  const handleHoneypotAlertProceed = () => {
+    setShowHoneypotAlert(false);
+    setShowVisualCaptcha(true);
+  };
+
+  // Function to check for honeypot activation
+  const checkHoneypotActivation = () => {
+    const honeypotField = document.querySelector('input[name="honeypotField"]');
+    if (honeypotField && honeypotField.value.trim()) {
+      setHoneypotValue(honeypotField.value);
+      setShowHoneypotAlert(true);
+      return true;
+    }
+    return false;
+  };
+
   const runBotDetection = async () => {
     setIsAnalyzing(true);
     setBotDetectionResults(null);
@@ -461,24 +671,40 @@ const LoginPage = ({ onLoginSuccess }) => {
     const startTime = Date.now();
     
     try {
+      // Prepare request body with reCAPTCHA token
+      const requestBody = { 
+        sessionId,
+        recaptchaToken: recaptchaToken || null
+      };
+
       const response = await fetch('/api/bot-detection', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ sessionId })
+        body: JSON.stringify(requestBody)
       });
       
       const data = await response.json();
       const processingTime = Date.now() - startTime;
       
       if (data.success) {
+        // Store reCAPTCHA analysis if available
+        if (data.recaptchaAnalysis) {
+          setRecaptchaAnalysis(data.recaptchaAnalysis);
+          setRecaptchaScore(data.recaptchaAnalysis.score);
+        }
+
         setBotDetectionResults({
           ...data.results,
           processingTime: data.processingTime || processingTime,
-          cached: data.cached || false
+          cached: data.cached || false,
+          recaptchaAnalysis: data.recaptchaAnalysis || null,
+          combinedAnalysis: data.combinedAnalysis || null
         });
         console.log('Bot detection results:', data.results);
+        console.log('reCAPTCHA analysis:', data.recaptchaAnalysis);
+        console.log('Combined analysis:', data.combinedAnalysis);
         
         // Check if bot was detected and show CAPTCHA
         const botDetected = checkBotDetection(data.results);
@@ -506,6 +732,13 @@ const LoginPage = ({ onLoginSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Debug logging for form submission
+    console.log('📝 FORM SUBMISSION STARTED:', { 
+      formData, 
+      honeypotValue: formData.honeypotField,
+      timestamp: new Date().toISOString() 
+    });
+
     // Prevent multiple submissions
     if (isSubmitting || isAnalyzing || isValidating) {
       return;
@@ -521,6 +754,16 @@ const LoginPage = ({ onLoginSuccess }) => {
     setIsSubmitting(true);
     setIsValidating(true);
 
+    // Execute reCAPTCHA for login action
+    try {
+      const loginToken = await executeRecaptchaLogin();
+      setRecaptchaToken(loginToken);
+      console.log('reCAPTCHA executed for login action');
+    } catch (error) {
+      console.error('reCAPTCHA login execution failed:', error);
+      // Continue with submission even if reCAPTCHA fails
+    }
+
     // Run ML analysis if it hasn't been run yet
     if (!botDetectionResults) {
       try {
@@ -535,9 +778,25 @@ const LoginPage = ({ onLoginSuccess }) => {
     }
 
     try {
-      // Check for honeypot
+      // Check for honeypot - if filled, trigger Gamified CAPTCHA immediately
       if (formData.honeypotField) {
+        console.log('🍯 HONEYPOT TRIGGERED! Filled with:', formData.honeypotField);
         logEvent('honeypot_triggered', { value: formData.honeypotField });
+        
+        // Set difficulty based on honeypot value
+        const honeypotValue = formData.honeypotField.toLowerCase();
+        if (['spam', 'bot', 'automation'].includes(honeypotValue)) {
+          setCaptchaDifficulty('hard');
+        } else if (['script', 'crawler'].includes(honeypotValue)) {
+          setCaptchaDifficulty('medium');
+        } else {
+          setCaptchaDifficulty('easy');
+        }
+        
+        // Trigger Visual CAPTCHA immediately when honeypot is detected
+        setShowVisualCaptcha(true);
+        setValidationErrors({ general: 'Bot behavior detected. Please complete the human verification challenge.' });
+        
         setIsSubmitting(false);
         setIsValidating(false);
         return;
@@ -574,6 +833,11 @@ const LoginPage = ({ onLoginSuccess }) => {
       // Log the login attempt with sessionId
       logEvent('login_attempt', attemptData, 'login_attempt', sessionId);
 
+      // Check for honeypot activation first
+      if (checkHoneypotActivation()) {
+        return; // Stop here if honeypot was triggered
+      }
+
       // Run bot detection analysis
       await runBotDetection();
 
@@ -595,10 +859,23 @@ const LoginPage = ({ onLoginSuccess }) => {
             });
           }
         } else {
-          // If bot was detected, show CAPTCHA
-          setShowCaptcha(true);
-          setCaptchaValue(generateCaptcha());
-          setValidationErrors({ general: 'Bot behavior detected. Please complete CAPTCHA verification.' });
+          // If bot was detected, show bot detection alert first
+          const lastAttempt = botDetectionResults.loginAttempts[botDetectionResults.loginAttempts.length - 1];
+          const botScore = lastAttempt.fusionScore || lastAttempt.mouseScore || 0.5;
+          
+          setBotDetectionConfidence(botScore);
+          
+          if (botScore > 0.8) {
+            setCaptchaDifficulty('hard');
+          } else if (botScore > 0.6) {
+            setCaptchaDifficulty('medium');
+          } else {
+            setCaptchaDifficulty('easy');
+          }
+          
+          // Show bot detection alert first
+          setShowBotDetectionAlert(true);
+          setValidationErrors({ general: 'Bot behavior detected. Please complete the human verification challenge.' });
         }
       } else {
         // If bot detection results are incomplete, proceed with login anyway
@@ -724,6 +1001,13 @@ const LoginPage = ({ onLoginSuccess }) => {
                     </Alert>
                   )}
                   
+                  {/* reCAPTCHA Status */}
+                  {isRecaptchaLoading && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      🛡️ Initializing security verification...
+                    </Alert>
+                  )}
+
                   {/* ML Analysis Status Messages */}
                   {isAnalyzing && (
                     <Alert severity="info" sx={{ mb: 2 }}>
@@ -997,6 +1281,60 @@ const LoginPage = ({ onLoginSuccess }) => {
                           </Box>
                         )}
 
+                        {/* reCAPTCHA Results */}
+                        {botDetectionResults.recaptchaAnalysis && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🛡️ reCAPTCHA v3 Analysis
+                            </Typography>
+                            <Box sx={{ p: 1, bgcolor: 'rgba(51, 65, 85, 0.3)', borderRadius: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 0.5 }}>
+                                Score: {botDetectionResults.recaptchaAnalysis.score.toFixed(4)}
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: botDetectionResults.recaptchaAnalysis.confidence === 'high' ? '#10b981' : 
+                                       botDetectionResults.recaptchaAnalysis.confidence === 'medium' ? '#f59e0b' : '#ef4444',
+                                fontWeight: 600,
+                                fontSize: '0.9rem'
+                              }}>
+                                Confidence: {botDetectionResults.recaptchaAnalysis.confidence.toUpperCase()}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                Risk Level: {botDetectionResults.recaptchaAnalysis.riskLevel} | 
+                                Action: {botDetectionResults.recaptchaAnalysis.action}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+
+                        {/* Combined Analysis */}
+                        {botDetectionResults.combinedAnalysis && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🎯 Combined Security Analysis
+                            </Typography>
+                            <Box sx={{ p: 1, bgcolor: 'rgba(51, 65, 85, 0.3)', borderRadius: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 0.5 }}>
+                                ML Score: {botDetectionResults.combinedAnalysis.mlScore.toFixed(4)} | 
+                                reCAPTCHA Score: {botDetectionResults.combinedAnalysis.recaptchaScore.toFixed(4)}
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: botDetectionResults.combinedAnalysis.combinedRisk === 'very_low' ? '#10b981' : 
+                                       botDetectionResults.combinedAnalysis.combinedRisk === 'low' ? '#10b981' :
+                                       botDetectionResults.combinedAnalysis.combinedRisk === 'medium' ? '#f59e0b' : '#ef4444',
+                                fontWeight: 600,
+                                fontSize: '0.9rem'
+                              }}>
+                                Combined Risk: {botDetectionResults.combinedAnalysis.combinedRisk.toUpperCase()}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                Final Decision: {botDetectionResults.combinedAnalysis.finalDecision} | 
+                                Confidence: {botDetectionResults.combinedAnalysis.confidence}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+
                         {/* Login Attempt Results */}
                         {botDetectionResults.loginAttempts && botDetectionResults.loginAttempts.length > 0 && (
                           <Box sx={{ mb: 2 }}>
@@ -1024,7 +1362,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                         )}
 
                         <Typography variant="body2" sx={{ color: '#10b981', fontWeight: 600, mt: 2 }}>
-                          🎯 ML Analysis: All patterns indicate HUMAN behavior with high confidence
+                          🎯 Security Analysis: Multi-layered verification completed with high confidence
                         </Typography>
                       </Box>
                     )}
@@ -1208,6 +1546,36 @@ const LoginPage = ({ onLoginSuccess }) => {
       
       {/* ML Detection Monitor */}
       <MLDetectionMonitor onBotDetected={handleBotDetected} />
+      
+      {/* Bot Detection Alert */}
+      {showBotDetectionAlert && (
+        <BotDetectionAlert
+          isVisible={showBotDetectionAlert}
+          detectionType="bot"
+          confidence={botDetectionConfidence}
+          onClose={handleBotDetectionAlertClose}
+          onProceed={handleBotDetectionAlertProceed}
+        />
+      )}
+
+      {/* Honeypot Alert */}
+      {showHoneypotAlert && (
+        <HoneypotAlert
+          isVisible={showHoneypotAlert}
+          honeypotValue={honeypotValue}
+          onClose={handleHoneypotAlertClose}
+          onProceed={handleHoneypotAlertProceed}
+        />
+      )}
+
+      {/* Visual CAPTCHA */}
+      {showVisualCaptcha && (
+        <VisualCaptcha
+          onSuccess={handleVisualCaptchaSuccess}
+          onClose={handleVisualCaptchaClose}
+          difficulty={captchaDifficulty}
+        />
+      )}
     </ThemeProvider>
   );
 };

@@ -18,15 +18,27 @@ import sys
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
+import importlib.util
 
-# Import our detection modules
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'core'))
+# Load core modules directly from file paths to avoid import path issues
+CORE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'src', 'core'))
 
-from web_log_detection_bot import WebLogDetectionBot
-from mouse_movements_detection_bot import MouseMovementDetectionBot
-from fusion import BotDetectionFusion
+def _load_module(name: str, filename: str):
+    module_path = os.path.join(CORE_DIR, filename)
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load module {name} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+_web_log_mod = _load_module('web_log_detection_bot', 'web_log_detection_bot.py')
+_mouse_mod = _load_module('mouse_movements_detection_bot', 'mouse_movements_detection_bot.py')
+_fusion_mod = _load_module('fusion', 'fusion.py')
+
+WebLogDetectionBot = _web_log_mod.WebLogDetectionBot
+MouseMovementDetectionBot = _mouse_mod.MouseMovementDetectionBot
+BotDetectionFusion = _fusion_mod.BotDetectionFusion
 
 class ComprehensiveBotDetectionSystem:
     """
@@ -35,9 +47,9 @@ class ComprehensiveBotDetectionSystem:
     """
     
     def __init__(self, 
-                 dataset_base_path: str = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset',
-                 web_log_model_path: str = 'web_log_detector_comprehensive.pkl',
-                 mouse_movement_model_path: str = 'mouse_movement_detector_comprehensive.h5'):
+                 dataset_base_path: str = None,
+                 web_log_model_path: str = None,
+                 mouse_movement_model_path: str = None):
         """
         Initialize the comprehensive bot detection system.
         
@@ -46,9 +58,11 @@ class ComprehensiveBotDetectionSystem:
             web_log_model_path: Path to save/load the web log detection model
             mouse_movement_model_path: Path to save/load the mouse movement detection model
         """
-        self.dataset_base_path = dataset_base_path
-        self.web_log_model_path = web_log_model_path
-        self.mouse_movement_model_path = mouse_movement_model_path
+        # Resolve repository root and default paths
+        repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+        self.dataset_base_path = dataset_base_path or os.path.join(repo_root, 'data')
+        self.web_log_model_path = web_log_model_path or os.path.join(repo_root, 'models', 'web_log_detector_comprehensive.pkl')
+        self.mouse_movement_model_path = mouse_movement_model_path or os.path.join(repo_root, 'models', 'mouse_movement_detector_comprehensive.h5')
         
         # Initialize detection modules
         self.web_log_detector = WebLogDetectionBot()
@@ -81,48 +95,35 @@ class ComprehensiveBotDetectionSystem:
                 print(f"Error loading mouse movement model: {e}")
     
     def train_web_log_detector(self):
-        """Train the web log detection model on all available datasets."""
-        print("\n" + "="*60)
-        print("TRAINING WEB LOG DETECTION MODEL")
-        print("="*60)
-        
-        # Train the web log detector (this will handle all phases sequentially)
-        self.web_log_detector.train_sequentially()
-        
-        # Save the trained model
-        self.web_log_detector.save_model(self.web_log_model_path)
-        self.web_log_trained = True
-        print(f"Web log detection model saved to {self.web_log_model_path}")
+        """Training requires prepared datasets. Not implemented in this runner."""
+        raise RuntimeError(
+            "Web log model not found. Please place pre-trained model at "
+            f"{self.web_log_model_path} or provide a training script with datasets."
+        )
     
     def train_mouse_movement_detector(self):
-        """Train the mouse movement detection model on all available datasets."""
-        print("\n" + "="*60)
-        print("TRAINING MOUSE MOVEMENT DETECTION MODEL")
-        print("="*60)
-        
-        # Train the mouse movement detector (this will handle all phases sequentially)
-        self.mouse_movement_detector.train_sequentially()
-        
-        # Save the trained model
-        self.mouse_movement_detector.save_model(self.mouse_movement_model_path)
-        self.mouse_movement_trained = True
-        print(f"Mouse movement detection model saved to {self.mouse_movement_model_path}")
+        """Training requires prepared datasets. Not implemented in this runner."""
+        raise RuntimeError(
+            "Mouse movement model not found. Please place pre-trained model at "
+            f"{self.mouse_movement_model_path} or provide a training script with datasets."
+        )
     
     def train_all_models(self):
         """Train both detection models."""
-        print("=== COMPREHENSIVE BOT DETECTION SYSTEM TRAINING ===")
+        print("=== COMPREHENSIVE BOT DETECTION SYSTEM MODEL LOADING ===")
         
-        # Train web log detector
+        # Require pre-trained models; provide clear guidance if missing
         if not self.web_log_trained:
-            self.train_web_log_detector()
-        else:
-            print("Web log detection model already trained.")
+            raise RuntimeError(
+                "Missing web log model. Copy 'web_log_detector_comprehensive.pkl' to "
+                f"{self.web_log_model_path}"
+            )
         
-        # Train mouse movement detector
         if not self.mouse_movement_trained:
-            self.train_mouse_movement_detector()
-        else:
-            print("Mouse movement detection model already trained.")
+            raise RuntimeError(
+                "Missing mouse movement model. Copy 'mouse_movement_detector_comprehensive.h5' to "
+                f"{self.mouse_movement_model_path}"
+            )
         
         # Initialize fusion with trained models
         self.fusion = BotDetectionFusion(
@@ -310,7 +311,7 @@ def main():
     # Initialize the system
     system = ComprehensiveBotDetectionSystem()
     
-    # Train all models
+    # Load pre-trained models (expects files under /models)
     system.train_all_models()
     
     # Demonstrate fusion logic

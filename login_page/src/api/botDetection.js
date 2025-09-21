@@ -2,16 +2,18 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import fetch from 'node-fetch';
+import ENTERPRISE_CONFIG from '../config/enterprise-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to the Python script (relative to the project root) - Updated for new structure
-const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'src', 'tests', 'test.py');
+const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'src', 'core', 'optimized_bot_detection.py');
 
 // Cache for bot detection results to avoid redundant processing
 const detectionCache = new Map();
-const CACHE_TTL = 30000; // 30 seconds cache
+const CACHE_TTL = 0; // Disabled during testing for fresh results each run
 
 // Rate limiting to prevent excessive requests
 const requestLimiter = new Map();
@@ -21,13 +23,188 @@ const MAX_REQUESTS_PER_WINDOW = 3; // Max 3 requests per 5 seconds
 // Optimized Python script path for faster processing - Updated for new structure
 const OPTIMIZED_PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'src', 'core', 'optimized_bot_detection.py');
 
+// reCAPTCHA Enterprise configuration
+const RECAPTCHA_CONFIG = {
+  ...ENTERPRISE_CONFIG,
+  scoreThresholds: {
+    high: 0.7,      // High confidence human
+    medium: 0.5,    // Medium confidence
+    low: 0.3,       // Low confidence - likely bot
+    critical: 0.1   // Very likely bot
+  }
+};
+
+/**
+ * Verify reCAPTCHA Enterprise token with Google
+ * @param {string} token - reCAPTCHA token from frontend
+ * @param {string} expectedAction - Expected action from frontend
+ * @returns {Object} - Verification result with score analysis
+ */
+async function verifyRecaptcha(token, expectedAction = 'PAGEVIEW') {
+  if (!token || token === 'YOUR_RECAPTCHA_SITE_KEY') {
+    return {
+      success: false,
+      error: 'No reCAPTCHA token provided',
+      score: 0.5, // Neutral score when no token
+      analysis: {
+        score: 0.5,
+        confidence: 'unknown',
+        recommendation: 'proceed',
+        riskLevel: 'medium',
+        action: 'none'
+      }
+    };
+  }
+
+  try {
+    // Create request body using enterprise config
+    const requestBody = RECAPTCHA_CONFIG.createRequestBody(token, expectedAction);
+    const url = RECAPTCHA_CONFIG.getAssessmentUrl();
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const data = await response.json();
+    
+    if (response.ok && data.tokenProperties && data.tokenProperties.valid) {
+      const score = data.riskAnalysis?.score || 0.5;
+      const analysis = analyzeRecaptchaScore(score);
+      
+      return {
+        success: true,
+        score: score,
+        action: data.tokenProperties.action,
+        hostname: data.tokenProperties.hostname,
+        createTime: data.tokenProperties.createTime,
+        analysis: analysis
+      };
+    } else {
+      console.error('reCAPTCHA Enterprise verification failed:', data);
+      return {
+        success: false,
+        error: data.error?.message || 'Verification failed',
+        score: 0.3, // Low score for failed verification
+        analysis: {
+          score: 0.3,
+          confidence: 'low',
+          recommendation: 'challenge',
+          riskLevel: 'high',
+          action: 'require_additional_verification'
+        }
+      };
+    }
+  } catch (error) {
+    console.error('reCAPTCHA Enterprise verification error:', error);
+    return {
+      success: false,
+      error: error.message,
+      score: 0.5, // Neutral score on error
+      analysis: {
+        score: 0.5,
+        confidence: 'unknown',
+        recommendation: 'proceed',
+        riskLevel: 'medium',
+        action: 'none'
+      }
+    };
+  }
+}
+
+/**
+ * Analyze reCAPTCHA score and determine action
+ * @param {number} score - reCAPTCHA score (0.0 - 1.0)
+ * @returns {Object} - Analysis result with recommendations
+ */
+function analyzeRecaptchaScore(score) {
+  const analysis = {
+    score,
+    confidence: 'unknown',
+    recommendation: 'proceed',
+    riskLevel: 'low',
+    action: 'none'
+  };
+
+  if (score >= RECAPTCHA_CONFIG.scoreThresholds.high) {
+    analysis.confidence = 'high';
+    analysis.recommendation = 'allow';
+    analysis.riskLevel = 'very_low';
+    analysis.action = 'proceed_normal';
+  } else if (score >= RECAPTCHA_CONFIG.scoreThresholds.medium) {
+    analysis.confidence = 'medium';
+    analysis.recommendation = 'monitor';
+    analysis.riskLevel = 'low';
+    analysis.action = 'proceed_with_monitoring';
+  } else if (score >= RECAPTCHA_CONFIG.scoreThresholds.low) {
+    analysis.confidence = 'low';
+    analysis.recommendation = 'challenge';
+    analysis.riskLevel = 'medium';
+    analysis.action = 'require_additional_verification';
+  } else {
+    analysis.confidence = 'very_low';
+    analysis.recommendation = 'block';
+    analysis.riskLevel = 'high';
+    analysis.action = 'block_or_captcha';
+  }
+
+  return analysis;
+}
+
+/**
+ * Combine reCAPTCHA score with ML detection results
+ * @param {Object} mlResults - ML bot detection results
+ * @param {Object} recaptchaAnalysis - reCAPTCHA score analysis
+ * @returns {Object} - Combined analysis
+ */
+function combineRecaptchaWithML(mlResults, recaptchaAnalysis) {
+  const combined = {
+    mlScore: mlResults?.final_score || mlResults?.loginAttempts?.[0]?.fusionScore || 0.5,
+    recaptchaScore: recaptchaAnalysis.score,
+    combinedRisk: 'low',
+    finalDecision: 'allow',
+    confidence: 'medium',
+    triggers: []
+  };
+
+  // Determine combined risk level
+  const mlRisk = combined.mlScore > 0.5 ? 'high' : 'low';
+  const recaptchaRisk = recaptchaAnalysis.riskLevel;
+
+  // Combined risk assessment
+  if (mlRisk === 'high' && recaptchaRisk === 'high') {
+    combined.combinedRisk = 'very_high';
+    combined.finalDecision = 'block';
+    combined.confidence = 'high';
+    combined.triggers.push('ml_bot_detected', 'recaptcha_bot_detected');
+  } else if (mlRisk === 'high' || recaptchaRisk === 'high') {
+    combined.combinedRisk = 'high';
+    combined.finalDecision = 'challenge';
+    combined.confidence = 'medium';
+    combined.triggers.push(mlRisk === 'high' ? 'ml_bot_detected' : 'recaptcha_bot_detected');
+  } else if (mlRisk === 'low' && recaptchaRisk === 'very_low') {
+    combined.combinedRisk = 'very_low';
+    combined.finalDecision = 'allow';
+    combined.confidence = 'high';
+  } else {
+    combined.combinedRisk = 'medium';
+    combined.finalDecision = 'monitor';
+    combined.confidence = 'medium';
+  }
+
+  return combined;
+}
+
 async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
-    const { sessionId } = req.body;
+    const { sessionId, recaptchaToken } = req.body;
     
     // Rate limiting check
     const clientId = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
@@ -56,7 +233,7 @@ async function handler(req, res) {
     // Check cache first
     const cacheKey = `session_${sessionId}`;
     const cachedResult = detectionCache.get(cacheKey);
-    if (cachedResult && (Date.now() - cachedResult.timestamp) < CACHE_TTL) {
+    if (CACHE_TTL > 0 && cachedResult && (Date.now() - cachedResult.timestamp) < CACHE_TTL) {
       console.log('Returning cached bot detection result');
       return res.status(200).json({
         success: true,
@@ -66,6 +243,20 @@ async function handler(req, res) {
     }
 
     console.log('Starting optimized bot detection analysis...');
+    
+    // Verify reCAPTCHA token if provided
+    let recaptchaAnalysis = null;
+    if (recaptchaToken) {
+      console.log('Verifying reCAPTCHA Enterprise token...');
+      const recaptchaResult = await verifyRecaptcha(recaptchaToken, 'LOGIN');
+      recaptchaAnalysis = recaptchaResult.analysis;
+      console.log('reCAPTCHA Enterprise verification result:', {
+        success: recaptchaResult.success,
+        score: recaptchaResult.score,
+        confidence: recaptchaAnalysis.confidence,
+        riskLevel: recaptchaAnalysis.riskLevel
+      });
+    }
     
     // Use optimized Python script if available, otherwise fall back to original
     const scriptPath = fs.existsSync(OPTIMIZED_PYTHON_SCRIPT_PATH) 
@@ -117,6 +308,20 @@ async function handler(req, res) {
         // Parse the output to extract results
         const results = parsePythonOutput(output);
         
+        // Combine reCAPTCHA analysis with ML results
+        let combinedAnalysis = null;
+        if (recaptchaAnalysis) {
+          combinedAnalysis = combineRecaptchaWithML(results, recaptchaAnalysis);
+          console.log('Combined analysis result:', {
+            mlScore: combinedAnalysis.mlScore,
+            recaptchaScore: combinedAnalysis.recaptchaScore,
+            combinedRisk: combinedAnalysis.combinedRisk,
+            finalDecision: combinedAnalysis.finalDecision,
+            confidence: combinedAnalysis.confidence,
+            triggers: combinedAnalysis.triggers
+          });
+        }
+        
         // Cache the result
         detectionCache.set(cacheKey, {
           data: results,
@@ -130,6 +335,8 @@ async function handler(req, res) {
         res.status(200).json({
           success: true,
           results: results,
+          recaptchaAnalysis: recaptchaAnalysis,
+          combinedAnalysis: combinedAnalysis,
           rawOutput: output,
           processingTime: Date.now() - req.startTime
         });

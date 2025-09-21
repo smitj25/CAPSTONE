@@ -17,11 +17,11 @@ class BotDetectionFusion:
     def __init__(self, 
                  web_log_model_path: str = None,
                  mouse_movement_model_path: str = None,
-                 high_threshold: float = 0.7,
-                 low_threshold: float = 0.3,
-                 final_threshold: float = 0.5,
-                 mouse_weight: float = 0.5,
-                 web_log_weight: float = 0.5):
+                 high_threshold: float = 0.65,
+                 low_threshold: float = 0.35,
+                 final_threshold: float = 0.45,
+                 mouse_weight: float = 0.6,
+                 web_log_weight: float = 0.4):
         """
         Initialize the fusion module.
         

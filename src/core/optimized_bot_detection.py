@@ -242,7 +242,8 @@ class OptimizedBotDetector:
             'webLogs': None,
             'loginAttempts': [],
             'summary': {},
-            'processingTime': 0
+            'processingTime': 0,
+            'behavior': None
         }
         
         try:
@@ -272,7 +273,7 @@ class OptimizedBotDetector:
                                 'sessionId': session_data.get('sessionId', f'session_{i}'),
                                 'movements': len(movements),
                                 'botScore': score,
-                                'classification': 'BOT' if score > 0.5 else 'HUMAN'
+                                'classification': 'BOT' if score > 0.45 else 'HUMAN'
                             })
                         except Exception as e:
                             print(f"Mouse prediction error: {e}")
@@ -321,11 +322,46 @@ class OptimizedBotDetector:
                                 'sessionId': session_id or 'unknown',
                                 'entries': len(web_logs_data),
                                 'botScore': score,
-                                'classification': 'BOT' if score > 0.5 else 'HUMAN'
+                                'classification': 'BOT' if score > 0.45 else 'HUMAN'
                             }
                         except Exception as e:
                             print(f"Web log prediction error: {e}")
             
+            # Load behavior signals if present and derive penalties
+            behavior_file = os.path.join(logs_dir, 'behavior.json')
+            behavior_penalty = 0.0
+            if os.path.exists(behavior_file):
+                with open(behavior_file, 'r') as f:
+                    behavior_data = json.load(f)
+                # Filter for session
+                if session_id:
+                    behavior_data = [b for b in behavior_data if b.get('sessionId') == session_id]
+                if behavior_data:
+                    # Use latest snapshot
+                    b = behavior_data[-1]
+                    avg_key = b.get('avgKeyInterval') or 0
+                    untrusted_ratio = b.get('untrustedClickRatio') or 0
+                    scroll_var = b.get('scrollVariance') or 0
+                    focus_blur = b.get('focusBlurCount') or 0
+
+                    # Heuristics: high untrusted clicks strongly penalize, ultra-low key interval penalize, extremely low scroll variance penalize
+                    if untrusted_ratio > 0.2:
+                        behavior_penalty += min(0.25, untrusted_ratio)
+                    if avg_key > 0 and avg_key < 35:  # very fast typing (ms)
+                        behavior_penalty += 0.15
+                    if scroll_var is not None and scroll_var < 5:
+                        behavior_penalty += 0.1
+                    if focus_blur > 4:
+                        behavior_penalty += 0.1
+
+                    results['behavior'] = {
+                        'avgKeyInterval': avg_key,
+                        'untrustedClickRatio': untrusted_ratio,
+                        'scrollVariance': scroll_var,
+                        'focusBlurCount': focus_blur,
+                        'penalty': round(behavior_penalty, 4)
+                    }
+
             # Process login attempts
             login_file = os.path.join(logs_dir, 'login_attempts.json')
             if os.path.exists(login_file):
@@ -350,12 +386,14 @@ class OptimizedBotDetector:
                             web_score = 0.3  # Default score
                             
                             # Use fusion for final classification
-                            fusion_score = self.fusion.fuse_scores(mouse_score, web_score)
-                            final_classification = self.fusion.classify_session(mouse_score, web_score)
+                            # Apply behavior penalty by increasing mouse_score
+                            penalized_mouse = min(1.0, mouse_score + behavior_penalty)
+                            fusion_score = self.fusion.fuse_scores(penalized_mouse, web_score)
+                            final_classification = self.fusion.classify_session(penalized_mouse, web_score)
                             
                             results['loginAttempts'].append({
                                 'attemptNumber': i + 1,
-                                'mouseScore': mouse_score,
+                                'mouseScore': penalized_mouse,
                                 'webScore': web_score,
                                 'fusionScore': fusion_score,
                                 'classification': 'BOT' if final_classification[0] else 'HUMAN'

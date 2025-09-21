@@ -12,6 +12,7 @@ const WEB_LOGS_PATH = path.join(LOGS_DIR, 'web_logs.json');
 const MOUSE_MOVEMENTS_PATH = path.join(LOGS_DIR, 'mouse_movements.json');
 const LOGIN_ATTEMPTS_PATH = path.join(LOGS_DIR, 'login_attempts.json');
 const EVENTS_PATH = path.join(LOGS_DIR, 'events.json');
+const BEHAVIOR_PATH = path.join(LOGS_DIR, 'behavior.json');
 
 // Helper function to read JSON file safely
 async function readJsonFile(filePath) {
@@ -48,7 +49,7 @@ async function runMLDetection(sessionId) {
   try {
     console.log(`🤖 Running automatic ML detection for session: ${sessionId}`);
     
-    const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'test.py');
+    const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'src', 'core', 'optimized_bot_detection.py');
     
     return new Promise((resolve, reject) => {
       const pythonProcess = spawn('python', [PYTHON_SCRIPT_PATH], {
@@ -103,6 +104,7 @@ async function handler(req, res) {
     const data = req.body;
     let updateSuccess = true;
     let eventsUpdated = false;
+    let behaviorUpdated = false;
     let events = { mouseMovements: [], webLogs: [], sessionStats: null };
     
     // Handle session statistics if provided
@@ -196,6 +198,17 @@ async function handler(req, res) {
       }
     }
     
+    // Handle behavior signals (keystroke timing, focus/blur, scroll variance, click trust)
+    if (data.behaviorSignals) {
+      const currentSessionId = data.behaviorSignals.sessionId;
+      const allBehavior = await readJsonFile(BEHAVIOR_PATH);
+      const currentSessionBehavior = allBehavior.filter(b => b.sessionId === currentSessionId);
+      currentSessionBehavior.push({ ...data.behaviorSignals, timestamp: new Date().toISOString() });
+      const success = await writeJsonFile(BEHAVIOR_PATH, currentSessionBehavior);
+      if (!success) updateSuccess = false;
+      behaviorUpdated = true;
+    }
+
     // Handle login attempts
     if (data.eventType === 'login_attempt') {
       // Get current session ID

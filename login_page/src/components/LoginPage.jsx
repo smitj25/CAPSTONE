@@ -9,9 +9,28 @@ import {
   Link,
   Fade,
   InputAdornment,
+<<<<<<< HEAD
   IconButton
 } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
+=======
+  IconButton,
+  Alert
+} from '@mui/material';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import MLDetectionMonitor from './MLDetectionMonitor';
+import VisualCaptcha from './VisualCaptcha';
+import BotDetectionAlert from './BotDetectionAlert';
+import HoneypotAlert from './HoneypotAlert';
+import { 
+  executeRecaptchaPageView, 
+  executeRecaptchaLogin, 
+  executeRecaptchaFormInteraction,
+  analyzeRecaptchaScore,
+  combineRecaptchaWithML,
+  isRecaptchaReady
+} from '../utils/recaptcha';
+>>>>>>> master
 
 
 
@@ -233,7 +252,11 @@ const modernTheme = createTheme({
   },
 });
 
+<<<<<<< HEAD
 const LoginPage = () => {
+=======
+const LoginPage = ({ onLoginSuccess }) => {
+>>>>>>> master
   const [formData, setFormData] = useState({
     aadhaarNumber: '',
     honeypotField: '',
@@ -242,6 +265,36 @@ const LoginPage = () => {
   const [mouseMovements, setMouseMovements] = useState([]);
   const [sessionId] = useState(() => Math.random().toString(36).substring(2, 15));
   const [loginAttempts, setLoginAttempts] = useState([]);
+<<<<<<< HEAD
+=======
+  const [botDetectionResults, setBotDetectionResults] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCaptcha, setShowCaptcha] = useState(false);
+  const [showVisualCaptcha, setShowVisualCaptcha] = useState(false);
+  const [showBotDetectionAlert, setShowBotDetectionAlert] = useState(false);
+  const [showHoneypotAlert, setShowHoneypotAlert] = useState(false);
+  const [honeypotValue, setHoneypotValue] = useState('');
+  const [botDetectionConfidence, setBotDetectionConfidence] = useState(0);
+  const [captchaValue, setCaptchaValue] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [validationErrors, setValidationErrors] = useState({});
+  const [isValidating, setIsValidating] = useState(false);
+  const [captchaDifficulty, setCaptchaDifficulty] = useState('medium');
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const [recaptchaScore, setRecaptchaScore] = useState(null);
+  const [recaptchaAnalysis, setRecaptchaAnalysis] = useState(null);
+  const [isRecaptchaLoading, setIsRecaptchaLoading] = useState(false);
+
+  // Behavior signals buffers (not in state to avoid re-renders)
+  const behaviorRef = React.useRef({
+    keyTimestamps: [],
+    lastKeyTime: null,
+    clickTrusted: [],
+    scrollDeltas: [],
+    focusBlurCount: 0
+  });
+>>>>>>> master
 
   useEffect(() => {
     // Track mouse movements
@@ -253,6 +306,43 @@ const LoginPage = () => {
     return () => document.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+<<<<<<< HEAD
+=======
+  // Initialize reCAPTCHA on component mount
+  useEffect(() => {
+    const initializeRecaptcha = async () => {
+      if (isRecaptchaReady()) {
+        try {
+          setIsRecaptchaLoading(true);
+          const token = await executeRecaptchaPageView();
+          setRecaptchaToken(token);
+          console.log('reCAPTCHA v3 initialized successfully');
+        } catch (error) {
+          console.error('reCAPTCHA initialization failed:', error);
+        } finally {
+          setIsRecaptchaLoading(false);
+        }
+      }
+    };
+
+    // Wait a bit for reCAPTCHA to load
+    const timer = setTimeout(initializeRecaptcha, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-trigger ML analysis when component mounts or when Aadhaar number is entered
+  useEffect(() => {
+    if (formData.aadhaarNumber.trim() && !botDetectionResults && !isAnalyzing) {
+      // Small delay to avoid running analysis immediately on every keystroke
+      const timer = setTimeout(() => {
+        runBotDetection();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [formData.aadhaarNumber, botDetectionResults, isAnalyzing]);
+
+>>>>>>> master
   // Track and save mouse movements periodically
   useEffect(() => {
     // Only set up the interval if we have a valid sessionId
@@ -275,6 +365,88 @@ const LoginPage = () => {
       }
     };
   }, [sessionId]); // Only depend on sessionId, not mouseMovements
+<<<<<<< HEAD
+=======
+
+  // Capture additional behavioral signals for ML (keystrokes, clicks, focus/blur, scroll)
+  useEffect(() => {
+    const handleKeyDown = () => {
+      const now = performance.now();
+      if (behaviorRef.current.lastKeyTime != null) {
+        behaviorRef.current.keyTimestamps.push(now - behaviorRef.current.lastKeyTime);
+      }
+      behaviorRef.current.lastKeyTime = now;
+    };
+
+    const handleClick = (e) => {
+      // e.isTrusted is false for synthetic/JS-triggered events
+      behaviorRef.current.clickTrusted.push(Boolean(e.isTrusted));
+    };
+
+    const handleScroll = () => {
+      // Capture rough scroll delta using pageYOffset
+      const y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      const prev = behaviorRef.current._lastScrollY ?? y;
+      behaviorRef.current.scrollDeltas.push(Math.abs(y - prev));
+      behaviorRef.current._lastScrollY = y;
+    };
+
+    const handleFocus = () => { behaviorRef.current.focusBlurCount += 1; };
+    const handleBlur = () => { behaviorRef.current.focusBlurCount += 1; };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('click', handleClick, true);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('focus', handleFocus, true);
+    window.addEventListener('blur', handleBlur, true);
+
+    const flushInterval = setInterval(() => {
+      // Build a snapshot and reset buffers
+      const snapshot = {
+        sessionId,
+        avgKeyInterval: behaviorRef.current.keyTimestamps.length
+          ? behaviorRef.current.keyTimestamps.reduce((a, b) => a + b, 0) / behaviorRef.current.keyTimestamps.length
+          : null,
+        untrustedClickRatio: behaviorRef.current.clickTrusted.length
+          ? behaviorRef.current.clickTrusted.filter(v => !v).length / behaviorRef.current.clickTrusted.length
+          : null,
+        scrollVariance: behaviorRef.current.scrollDeltas.length
+          ? (() => {
+              const arr = behaviorRef.current.scrollDeltas;
+              const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+              const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+              return variance;
+            })()
+          : null,
+        focusBlurCount: behaviorRef.current.focusBlurCount
+      };
+
+      // Reset buffers
+      behaviorRef.current.keyTimestamps = [];
+      behaviorRef.current.clickTrusted = [];
+      behaviorRef.current.scrollDeltas = [];
+      behaviorRef.current.focusBlurCount = 0;
+
+      // Send only if we have any data
+      if (snapshot.avgKeyInterval !== null || snapshot.untrustedClickRatio !== null || snapshot.scrollVariance !== null || snapshot.focusBlurCount > 0) {
+        fetch('/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ behaviorSignals: snapshot })
+        }).catch(() => {});
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(flushInterval);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('click', handleClick, true);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('focus', handleFocus, true);
+      window.removeEventListener('blur', handleBlur, true);
+    };
+  }, [sessionId]);
+>>>>>>> master
   
   // Function to save mouse movements to server
   const saveMouseMovements = () => {
@@ -307,13 +479,64 @@ const LoginPage = () => {
     });
   };
 
+<<<<<<< HEAD
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+=======
+  const validateAadhaar = (aadhaarNumber) => {
+    const errors = {};
+    
+    // Remove spaces and check if empty
+    const cleanAadhaar = aadhaarNumber.replace(/\s/g, '');
+    
+    if (!cleanAadhaar) {
+      errors.aadhaarNumber = 'Aadhaar number is required';
+    } else if (!/^\d{12}$/.test(cleanAadhaar)) {
+      errors.aadhaarNumber = 'Aadhaar number must be exactly 12 digits';
+    } else if (!/^[1-9]/.test(cleanAadhaar)) {
+      errors.aadhaarNumber = 'Aadhaar number cannot start with 0';
+    } else if (/(\d)\1{10}/.test(cleanAadhaar)) {
+      errors.aadhaarNumber = 'Aadhaar number cannot have all identical digits';
+    }
+    
+    return errors;
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Debug logging for honeypot field changes
+    if (name === 'honeypotField') {
+      console.log('🍯 HONEYPOT FIELD CHANGED:', { name, value, timestamp: new Date().toISOString() });
+    }
+    
+>>>>>>> master
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
 
+<<<<<<< HEAD
+=======
+    // Clear validation errors when user types
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+
+    // Execute reCAPTCHA on form interaction
+    if (name === 'aadhaarNumber' && value.length > 0) {
+      executeRecaptchaFormInteraction().then(token => {
+        setRecaptchaToken(token);
+        console.log('reCAPTCHA executed on form interaction');
+      }).catch(error => {
+        console.error('reCAPTCHA form interaction failed:', error);
+      });
+    }
+
+>>>>>>> master
     // Log input events
     logEvent('input_change', { field: name });
   };
@@ -371,6 +594,7 @@ const LoginPage = () => {
     });
   };
 
+<<<<<<< HEAD
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -404,6 +628,335 @@ const LoginPage = () => {
 
     if (isLoginSuccessful) {
       setLoginSuccess(true);
+=======
+  const generateCaptcha = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
+  const checkBotDetection = (results) => {
+    if (results && results.loginAttempts && results.loginAttempts.length > 0) {
+      const lastAttempt = results.loginAttempts[results.loginAttempts.length - 1];
+      if (lastAttempt.classification === 'BOT') {
+        console.log('🚨 BOT DETECTED! Showing Gamified CAPTCHA...');
+        
+        // Determine difficulty based on bot score
+        const botScore = lastAttempt.fusionScore || lastAttempt.mouseScore || 0.5;
+        if (botScore > 0.8) {
+          setCaptchaDifficulty('hard');
+        } else if (botScore > 0.6) {
+          setCaptchaDifficulty('medium');
+        } else {
+          setCaptchaDifficulty('easy');
+        }
+        
+        setShowGamifiedCaptcha(true);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleBotDetected = (results) => {
+    console.log('🚨 Bot detected by monitor!', results);
+    setBotDetectionResults(results);
+    checkBotDetection(results);
+    
+    // Clear any previous validation errors when ML analysis completes
+    if (results && !results.error) {
+      setValidationErrors({});
+    }
+  };
+
+  const handleVisualCaptchaSuccess = () => {
+    console.log('🎉 Visual CAPTCHA completed successfully!');
+    setShowVisualCaptcha(false);
+    setValidationErrors({});
+    
+    // Proceed with login after successful CAPTCHA
+    if (onLoginSuccess) {
+      onLoginSuccess({
+        aadhaarNumber: formData.aadhaarNumber.replace(/\s/g, ''),
+        sessionId: sessionId,
+        loginTime: new Date().toISOString(),
+        botDetectionResults: botDetectionResults,
+        captchaCompleted: true
+      });
+    }
+  };
+
+  const handleVisualCaptchaClose = () => {
+    setShowVisualCaptcha(false);
+    setValidationErrors({ general: 'Human verification required to continue.' });
+  };
+
+  // Bot Detection Alert handlers
+  const handleBotDetectionAlertClose = () => {
+    setShowBotDetectionAlert(false);
+  };
+
+  const handleBotDetectionAlertProceed = () => {
+    setShowBotDetectionAlert(false);
+    setShowVisualCaptcha(true);
+  };
+
+  // Honeypot Alert handlers
+  const handleHoneypotAlertClose = () => {
+    setShowHoneypotAlert(false);
+  };
+
+  const handleHoneypotAlertProceed = () => {
+    setShowHoneypotAlert(false);
+    setShowVisualCaptcha(true);
+  };
+
+  // Function to check for honeypot activation
+  const checkHoneypotActivation = () => {
+    const honeypotField = document.querySelector('input[name="honeypotField"]');
+    if (honeypotField && honeypotField.value.trim()) {
+      setHoneypotValue(honeypotField.value);
+      setShowHoneypotAlert(true);
+      return true;
+    }
+    return false;
+  };
+
+  const runBotDetection = async () => {
+    setIsAnalyzing(true);
+    setBotDetectionResults(null);
+    setShowCaptcha(false);
+    
+    const startTime = Date.now();
+    
+    try {
+      // Prepare request body with reCAPTCHA token
+      const requestBody = { 
+        sessionId,
+        recaptchaToken: recaptchaToken || null
+      };
+
+      const response = await fetch('/api/bot-detection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      const data = await response.json();
+      const processingTime = Date.now() - startTime;
+      
+      if (data.success) {
+        // Store reCAPTCHA analysis if available
+        if (data.recaptchaAnalysis) {
+          setRecaptchaAnalysis(data.recaptchaAnalysis);
+          setRecaptchaScore(data.recaptchaAnalysis.score);
+        }
+
+        setBotDetectionResults({
+          ...data.results,
+          processingTime: data.processingTime || processingTime,
+          cached: data.cached || false,
+          recaptchaAnalysis: data.recaptchaAnalysis || null,
+          combinedAnalysis: data.combinedAnalysis || null
+        });
+        console.log('Bot detection results:', data.results);
+        console.log('reCAPTCHA analysis:', data.recaptchaAnalysis);
+        console.log('Combined analysis:', data.combinedAnalysis);
+        
+        // Check if bot was detected and show CAPTCHA
+        const botDetected = checkBotDetection(data.results);
+        if (botDetected) {
+          console.log('🎯 CAPTCHA triggered due to bot detection!');
+        }
+      } else {
+        console.error('Bot detection failed:', data.error);
+        setBotDetectionResults({ 
+          error: data.error,
+          processingTime: processingTime
+        });
+      }
+    } catch (error) {
+      console.error('Error running bot detection:', error);
+      setBotDetectionResults({ 
+        error: 'Failed to run bot detection',
+        processingTime: Date.now() - startTime
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Debug logging for form submission
+    console.log('📝 FORM SUBMISSION STARTED:', { 
+      formData, 
+      honeypotValue: formData.honeypotField,
+      timestamp: new Date().toISOString() 
+    });
+
+    // Prevent multiple submissions
+    if (isSubmitting || isAnalyzing || isValidating) {
+      return;
+    }
+
+    // Validate form before submission
+    const errors = validateAadhaar(formData.aadhaarNumber);
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setIsValidating(true);
+
+    // Execute reCAPTCHA for login action
+    try {
+      const loginToken = await executeRecaptchaLogin();
+      setRecaptchaToken(loginToken);
+      console.log('reCAPTCHA executed for login action');
+    } catch (error) {
+      console.error('reCAPTCHA login execution failed:', error);
+      // Continue with submission even if reCAPTCHA fails
+    }
+
+    // Run ML analysis if it hasn't been run yet
+    if (!botDetectionResults) {
+      try {
+        await runBotDetection();
+      } catch (error) {
+        console.error('Error running ML analysis:', error);
+        setValidationErrors({ general: 'Security verification failed. Please try again.' });
+        setIsSubmitting(false);
+        setIsValidating(false);
+        return;
+      }
+    }
+
+    try {
+      // Check for honeypot - if filled, trigger Gamified CAPTCHA immediately
+      if (formData.honeypotField) {
+        console.log('🍯 HONEYPOT TRIGGERED! Filled with:', formData.honeypotField);
+        logEvent('honeypot_triggered', { value: formData.honeypotField });
+        
+        // Set difficulty based on honeypot value
+        const honeypotValue = formData.honeypotField.toLowerCase();
+        if (['spam', 'bot', 'automation'].includes(honeypotValue)) {
+          setCaptchaDifficulty('hard');
+        } else if (['script', 'crawler'].includes(honeypotValue)) {
+          setCaptchaDifficulty('medium');
+        } else {
+          setCaptchaDifficulty('easy');
+        }
+        
+        // Trigger Visual CAPTCHA immediately when honeypot is detected
+        setShowVisualCaptcha(true);
+        setValidationErrors({ general: 'Bot behavior detected. Please complete the human verification challenge.' });
+        
+        setIsSubmitting(false);
+        setIsValidating(false);
+        return;
+      }
+
+      // Validate Aadhaar number with enhanced validation
+      const cleanAadhaar = formData.aadhaarNumber.replace(/\s/g, '');
+      const isValidAadhaar = /^\d{12}$/.test(cleanAadhaar) && 
+                             /^[1-9]/.test(cleanAadhaar) && 
+                             !/(\d)\1{10}/.test(cleanAadhaar);
+      
+      if (!isValidAadhaar) {
+        setValidationErrors({ aadhaarNumber: 'Invalid Aadhaar number format' });
+        setIsSubmitting(false);
+        setIsValidating(false);
+        return;
+      }
+
+      // Log login attempt
+      const attemptData = {
+        timestamp: new Date().toISOString(),
+        aadhaarNumber: cleanAadhaar.replace(/\d(?=\d{4})/g, '*'), // Mask Aadhaar number for privacy
+        mouseMovements: mouseMovements.length,
+        success: true
+      };
+
+      setLoginAttempts(prev => [...prev, attemptData]);
+      
+      // Save mouse movements before logging the login attempt
+      if (mouseMovements.length > 0) {
+        saveMouseMovements();
+      }
+      
+      // Log the login attempt with sessionId
+      logEvent('login_attempt', attemptData, 'login_attempt', sessionId);
+
+      // Check for honeypot activation first
+      if (checkHoneypotActivation()) {
+        return; // Stop here if honeypot was triggered
+      }
+
+      // Run bot detection analysis
+      await runBotDetection();
+
+      // If bot detection passes, proceed with login
+      if (botDetectionResults && botDetectionResults.loginAttempts && botDetectionResults.loginAttempts.length > 0) {
+        // Check if any login attempt was classified as BOT
+        const hasBotDetection = botDetectionResults.loginAttempts.some(attempt => 
+          attempt.classification === 'BOT'
+        );
+        
+        if (!hasBotDetection) {
+          // Call the parent component's onLoginSuccess callback
+          if (onLoginSuccess) {
+            onLoginSuccess({
+              aadhaarNumber: cleanAadhaar,
+              sessionId: sessionId,
+              loginTime: new Date().toISOString(),
+              botDetectionResults: botDetectionResults
+            });
+          }
+        } else {
+          // If bot was detected, show bot detection alert first
+          const lastAttempt = botDetectionResults.loginAttempts[botDetectionResults.loginAttempts.length - 1];
+          const botScore = lastAttempt.fusionScore || lastAttempt.mouseScore || 0.5;
+          
+          setBotDetectionConfidence(botScore);
+          
+          if (botScore > 0.8) {
+            setCaptchaDifficulty('hard');
+          } else if (botScore > 0.6) {
+            setCaptchaDifficulty('medium');
+          } else {
+            setCaptchaDifficulty('easy');
+          }
+          
+          // Show bot detection alert first
+          setShowBotDetectionAlert(true);
+          setValidationErrors({ general: 'Bot behavior detected. Please complete the human verification challenge.' });
+        }
+      } else {
+        // If bot detection results are incomplete, proceed with login anyway
+        if (onLoginSuccess) {
+          onLoginSuccess({
+            aadhaarNumber: cleanAadhaar,
+            sessionId: sessionId,
+            loginTime: new Date().toISOString(),
+            botDetectionResults: botDetectionResults
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error in form submission:', error);
+      setValidationErrors({ general: 'An error occurred during login. Please try again.' });
+    } finally {
+      setIsSubmitting(false);
+      setIsValidating(false);
+>>>>>>> master
     }
   };
 
@@ -445,6 +998,7 @@ const LoginPage = () => {
             padding: 3
           }}
         >
+<<<<<<< HEAD
           {loginSuccess ? (
             <Paper
               elevation={8}
@@ -546,6 +1100,8 @@ const LoginPage = () => {
                 </Box>
             </Paper>
           ) : (
+=======
+>>>>>>> master
             <Paper
               elevation={8}
               sx={{
@@ -591,6 +1147,11 @@ const LoginPage = () => {
                     autoFocus
                     value={formData.aadhaarNumber}
                     onChange={handleInputChange}
+<<<<<<< HEAD
+=======
+                    error={!!validationErrors.aadhaarNumber}
+                    helperText={validationErrors.aadhaarNumber || ''}
+>>>>>>> master
                     sx={{ mb: 3 }}
                     InputProps={{
                       endAdornment: (
@@ -603,6 +1164,36 @@ const LoginPage = () => {
                     }}
                   />
                   
+<<<<<<< HEAD
+=======
+                  {/* General validation error */}
+                  {validationErrors.general && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {validationErrors.general}
+                    </Alert>
+                  )}
+                  
+                  {/* reCAPTCHA Status */}
+                  {isRecaptchaLoading && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      🛡️ Initializing security verification...
+                    </Alert>
+                  )}
+
+                  {/* ML Analysis Status Messages */}
+                  {isAnalyzing && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      🔍 Running ML analysis for security verification. This may take a few seconds...
+                    </Alert>
+                  )}
+                  
+                  {botDetectionResults && !botDetectionResults.error && !validationErrors.general && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      ✅ ML Analysis completed successfully! You can now proceed with login.
+                    </Alert>
+                  )}
+                  
+>>>>>>> master
                   {/* Honeypot field - hidden from regular users */}
                   <input
                     type="text"
@@ -619,6 +1210,10 @@ const LoginPage = () => {
                     fullWidth
                     variant="contained"
                     size="large"
+<<<<<<< HEAD
+=======
+                    disabled={isAnalyzing || isSubmitting || isValidating || !formData.aadhaarNumber.trim()}
+>>>>>>> master
                     sx={{ 
                       mt: 2, 
                       mb: 3,
@@ -627,12 +1222,94 @@ const LoginPage = () => {
                       color: '#ffffff',
                       '&:hover': {
                         background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+<<<<<<< HEAD
                       }
                     }}
                   >
                     Sign In
                   </Button>
                   
+=======
+                      },
+                      '&:disabled': {
+                        background: 'rgba(99, 102, 255, 0.5)',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                      }
+                    }}
+                  >
+                    {isAnalyzing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 16,
+                            height: 16,
+                            border: '2px solid rgba(255,255,255,0.3)',
+                            borderTop: '2px solid #ffffff',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite',
+                            '@keyframes spin': {
+                              '0%': { transform: 'rotate(0deg)' },
+                              '100%': { transform: 'rotate(360deg)' }
+                            }
+                          }}
+                        />
+                        Running ML Analysis...
+                      </Box>
+                    ) : isSubmitting ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 16,
+                            height: 16,
+                            border: '2px solid rgba(255,255,255,0.3)',
+                            borderTop: '2px solid #ffffff',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite',
+                            '@keyframes spin': {
+                              '0%': { transform: 'rotate(0deg)' },
+                              '100%': { transform: 'rotate(360deg)' }
+                            }
+                          }}
+                        />
+                        Processing...
+                      </Box>
+                    ) : isValidating ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 16,
+                            height: 16,
+                            border: '2px solid rgba(255,255,255,0.3)',
+                            borderTop: '2px solid #ffffff',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite',
+                            '@keyframes spin': {
+                              '0%': { transform: 'rotate(0deg)' },
+                              '100%': { transform: 'rotate(360deg)' }
+                            }
+                          }}
+                        />
+                        Validating...
+                      </Box>
+                    ) : (
+                      'Sign In'
+                    )}
+                  </Button>
+                  
+                  {/* Helper text for button state */}
+                  {isAnalyzing && (
+                    <Typography variant="caption" sx={{ color: '#06b6d4', textAlign: 'center', display: 'block', mt: 1 }}>
+                      🔍 Running ML analysis for security verification...
+                    </Typography>
+                  )}
+                  
+                  {botDetectionResults && !isAnalyzing && (
+                    <Typography variant="caption" sx={{ color: '#10b981', textAlign: 'center', display: 'block', mt: 1 }}>
+                      ✅ Security verification complete! You can now sign in.
+                    </Typography>
+                  )}
+                  
+>>>>>>> master
                   <Box sx={{ textAlign: 'center', mt: 2 }}>
                     <Link 
                       href="#" 
@@ -655,7 +1332,232 @@ const LoginPage = () => {
                 </Box>
               </Box>
 
+<<<<<<< HEAD
 
+=======
+              {/* ML Analysis Progress Indicator */}
+              {isAnalyzing && (
+                <Box sx={{ width: '100%', mt: 4 }}>
+                  <Paper sx={{ p: 3, bgcolor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <Box
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          border: '3px solid rgba(99, 102, 241, 0.3)',
+                          borderTop: '3px solid #6366f1',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                          '@keyframes spin': {
+                            '0%': { transform: 'rotate(0deg)' },
+                            '100%': { transform: 'rotate(360deg)' }
+                          }
+                        }}
+                      />
+                      <Typography variant="h6" sx={{ ml: 2, color: '#6366f1', fontWeight: 600 }}>
+                        🤖 ML Bot Detection in Progress...
+                      </Typography>
+                    </Box>
+                    
+                    <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 2 }}>
+                      Analyzing your mouse movements and web behavior patterns...
+                    </Typography>
+                    
+                    <Box sx={{ width: '100%', bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 1, overflow: 'hidden' }}>
+                      <Box
+                        sx={{
+                          width: '100%',
+                          height: 4,
+                          bgcolor: '#6366f1',
+                          animation: 'progress 2s ease-in-out infinite',
+                          '@keyframes progress': {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(100%)' }
+                          }
+                        }}
+                      />
+                    </Box>
+                    
+                    <Typography variant="caption" sx={{ color: '#94a3b8', mt: 1, display: 'block' }}>
+                      Processing mouse movements, web logs, and running neural networks...
+                    </Typography>
+                  </Paper>
+                </Box>
+              )}
+
+              {/* Bot Detection Results */}
+              {botDetectionResults && (
+                <Box sx={{ width: '100%', mt: 4 }}>
+                  <Paper sx={{ p: 3, bgcolor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          bgcolor: botDetectionResults.cached ? '#06b6d4' : '#10b981',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ffffff',
+                          fontSize: '1.2rem',
+                          mr: 2
+                        }}
+                      >
+                        {botDetectionResults.cached ? '⚡' : '✓'}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="h6" sx={{ color: '#10b981', fontWeight: 600 }}>
+                          ML Analysis Complete!
+                        </Typography>
+                        {botDetectionResults.processingTime && (
+                          <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>
+                            {botDetectionResults.cached ? 'Cached result' : 'Fresh analysis'} • 
+                            Processing time: {botDetectionResults.processingTime.toFixed(2)}ms
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                    
+                    {botDetectionResults.error ? (
+                      <Typography color="error" variant="body2">
+                        Error: {botDetectionResults.error}
+                      </Typography>
+                    ) : (
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 2 }}>
+                          ✅ Successfully analyzed your behavior patterns using advanced ML models
+                        </Typography>
+                        
+                        {/* Mouse Movement Results */}
+                        {botDetectionResults.mouseMovements && botDetectionResults.mouseMovements.length > 0 && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🖱️ Mouse Movement Analysis
+                            </Typography>
+                            {botDetectionResults.mouseMovements.map((session, index) => (
+                              <Box key={index} sx={{ mb: 1 }}>
+                                <Typography variant="body2" sx={{ color: '#cbd5e1' }}>
+                                  Session {index + 1}: {session.movements} movements analyzed
+                                </Typography>
+                                <Typography variant="body2" sx={{ 
+                                  color: session.classification === 'HUMAN' ? '#10b981' : '#ef4444',
+                                  fontWeight: 600 
+                                }}>
+                                  Score: {session.botScore.toFixed(4)} → {session.classification}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+
+                        {/* Web Log Results */}
+                        {botDetectionResults.webLogs && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🌐 Web Behavior Analysis
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 1 }}>
+                              {botDetectionResults.webLogs.entries} web interactions analyzed
+                            </Typography>
+                            <Typography variant="body2" sx={{ 
+                              color: botDetectionResults.webLogs.classification === 'HUMAN' ? '#10b981' : '#ef4444',
+                              fontWeight: 600 
+                            }}>
+                              Score: {botDetectionResults.webLogs.botScore.toFixed(4)} → {botDetectionResults.webLogs.classification}
+                            </Typography>
+                          </Box>
+                        )}
+
+                        {/* reCAPTCHA Results */}
+                        {botDetectionResults.recaptchaAnalysis && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🛡️ reCAPTCHA v3 Analysis
+                            </Typography>
+                            <Box sx={{ p: 1, bgcolor: 'rgba(51, 65, 85, 0.3)', borderRadius: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 0.5 }}>
+                                Score: {botDetectionResults.recaptchaAnalysis.score.toFixed(4)}
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: botDetectionResults.recaptchaAnalysis.confidence === 'high' ? '#10b981' : 
+                                       botDetectionResults.recaptchaAnalysis.confidence === 'medium' ? '#f59e0b' : '#ef4444',
+                                fontWeight: 600,
+                                fontSize: '0.9rem'
+                              }}>
+                                Confidence: {botDetectionResults.recaptchaAnalysis.confidence.toUpperCase()}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                Risk Level: {botDetectionResults.recaptchaAnalysis.riskLevel} | 
+                                Action: {botDetectionResults.recaptchaAnalysis.action}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+
+                        {/* Combined Analysis */}
+                        {botDetectionResults.combinedAnalysis && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🎯 Combined Security Analysis
+                            </Typography>
+                            <Box sx={{ p: 1, bgcolor: 'rgba(51, 65, 85, 0.3)', borderRadius: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 0.5 }}>
+                                ML Score: {botDetectionResults.combinedAnalysis.mlScore.toFixed(4)} | 
+                                reCAPTCHA Score: {botDetectionResults.combinedAnalysis.recaptchaScore.toFixed(4)}
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: botDetectionResults.combinedAnalysis.combinedRisk === 'very_low' ? '#10b981' : 
+                                       botDetectionResults.combinedAnalysis.combinedRisk === 'low' ? '#10b981' :
+                                       botDetectionResults.combinedAnalysis.combinedRisk === 'medium' ? '#f59e0b' : '#ef4444',
+                                fontWeight: 600,
+                                fontSize: '0.9rem'
+                              }}>
+                                Combined Risk: {botDetectionResults.combinedAnalysis.combinedRisk.toUpperCase()}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                Final Decision: {botDetectionResults.combinedAnalysis.finalDecision} | 
+                                Confidence: {botDetectionResults.combinedAnalysis.confidence}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+
+                        {/* Login Attempt Results */}
+                        {botDetectionResults.loginAttempts && botDetectionResults.loginAttempts.length > 0 && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#06b6d4', fontWeight: 600, mb: 1 }}>
+                              🔐 Final Classification
+                            </Typography>
+                            {botDetectionResults.loginAttempts.map((attempt, index) => (
+                              <Box key={index} sx={{ p: 1, bgcolor: 'rgba(51, 65, 85, 0.3)', borderRadius: 1 }}>
+                                <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 0.5 }}>
+                                  Attempt {attempt.attemptNumber}:
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                  Mouse: {attempt.mouseScore.toFixed(4)} | Web: {attempt.webScore.toFixed(4)}
+                                </Typography>
+                                <Typography variant="body2" sx={{ 
+                                  color: attempt.classification === 'HUMAN' ? '#10b981' : '#ef4444',
+                                  fontWeight: 600,
+                                  fontSize: '0.9rem'
+                                }}>
+                                  Fusion: {attempt.fusionScore.toFixed(4)} → {attempt.classification}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+
+                        <Typography variant="body2" sx={{ color: '#10b981', fontWeight: 600, mt: 2 }}>
+                          🎯 Security Analysis: Multi-layered verification completed with high confidence
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Box>
+              )}
+>>>>>>> master
               
               <Typography 
                 variant="body2" 
@@ -669,12 +1571,209 @@ const LoginPage = () => {
                   letterSpacing: '0.02em',
                 }}
               >
+<<<<<<< HEAD
                 © 2024 Unique Identification Authority of India
               </Typography>
             </Paper>
           )}
         </Container>
       </Box>
+=======
+                              © 2024 Unique Identification Authority of India
+            </Typography>
+          </Paper>
+
+          {/* CAPTCHA Modal */}
+          {showCaptcha && (
+            <Box
+              sx={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                bgcolor: 'rgba(0, 0, 0, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+              }}
+            >
+              <Paper
+                sx={{
+                  p: 4,
+                  maxWidth: 400,
+                  width: '90%',
+                  bgcolor: '#1e293b',
+                  border: '2px solid #ef4444',
+                  borderRadius: 2,
+                }}
+              >
+                <Box sx={{ textAlign: 'center', mb: 3 }}>
+                  <Box
+                    sx={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: '50%',
+                      bgcolor: '#ef4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      fontSize: '2rem',
+                      mx: 'auto',
+                      mb: 2,
+                    }}
+                  >
+                    🤖
+                  </Box>
+                  <Typography variant="h5" sx={{ color: '#ef4444', fontWeight: 600, mb: 1 }}>
+                    Bot Detected!
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#cbd5e1' }}>
+                    Suspicious behavior detected. Please complete the CAPTCHA to continue.
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" sx={{ color: '#94a3b8', mb: 2 }}>
+                    Enter the code shown below:
+                  </Typography>
+                  
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: '#334155',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                      mb: 2,
+                      border: '1px solid #475569',
+                    }}
+                  >
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        letterSpacing: '0.2em',
+                        fontFamily: 'monospace',
+                        textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {captchaValue}
+                    </Typography>
+                  </Box>
+
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Enter CAPTCHA code"
+                    value={captchaInput}
+                    onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        color: '#ffffff',
+                        '& fieldset': {
+                          borderColor: '#475569',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: '#6366f1',
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: '#6366f1',
+                        },
+                      },
+                      '& .MuiInputLabel-root': {
+                        color: '#94a3b8',
+                      },
+                    }}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => {
+                      setShowCaptcha(false);
+                      setCaptchaInput('');
+                      setCaptchaValue(generateCaptcha());
+                    }}
+                    sx={{
+                      color: '#94a3b8',
+                      borderColor: '#475569',
+                      '&:hover': {
+                        borderColor: '#6366f1',
+                        color: '#6366f1',
+                      },
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={() => {
+                      if (captchaInput === captchaValue) {
+                        setShowCaptcha(false);
+                        setCaptchaInput('');
+                        alert('CAPTCHA verified! Access granted.');
+                      } else {
+                        alert('Incorrect CAPTCHA! Please try again.');
+                        setCaptchaInput('');
+                        setCaptchaValue(generateCaptcha());
+                      }
+                    }}
+                    sx={{
+                      bgcolor: '#ef4444',
+                      color: '#ffffff',
+                      '&:hover': {
+                        bgcolor: '#dc2626',
+                      },
+                    }}
+                  >
+                    Verify
+                  </Button>
+                </Box>
+              </Paper>
+            </Box>
+          )}
+        </Container>
+      </Box>
+      
+      {/* ML Detection Monitor */}
+      <MLDetectionMonitor onBotDetected={handleBotDetected} />
+      
+      {/* Bot Detection Alert */}
+      {showBotDetectionAlert && (
+        <BotDetectionAlert
+          isVisible={showBotDetectionAlert}
+          detectionType="bot"
+          confidence={botDetectionConfidence}
+          onClose={handleBotDetectionAlertClose}
+          onProceed={handleBotDetectionAlertProceed}
+        />
+      )}
+
+      {/* Honeypot Alert */}
+      {showHoneypotAlert && (
+        <HoneypotAlert
+          isVisible={showHoneypotAlert}
+          honeypotValue={honeypotValue}
+          onClose={handleHoneypotAlertClose}
+          onProceed={handleHoneypotAlertProceed}
+        />
+      )}
+
+      {/* Visual CAPTCHA */}
+      {showVisualCaptcha && (
+        <VisualCaptcha
+          onSuccess={handleVisualCaptchaSuccess}
+          onClose={handleVisualCaptchaClose}
+          difficulty={captchaDifficulty}
+        />
+      )}
+>>>>>>> master
     </ThemeProvider>
   );
 };

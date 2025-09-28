@@ -3,6 +3,10 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import logHandler from './src/api/log.js';
+<<<<<<< HEAD
+=======
+import botDetectionHandler from './src/api/botDetection.js';
+>>>>>>> master
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +19,10 @@ app.use(bodyParser.json());
 
 // API routes
 app.post('/api/log', (req, res) => logHandler(req, res));
+<<<<<<< HEAD
+=======
+app.post('/api/bot-detection', (req, res) => botDetectionHandler(req, res));
+>>>>>>> master
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

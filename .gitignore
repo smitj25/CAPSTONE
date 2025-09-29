@@ -46,6 +46,7 @@ venv/
 chromedriver.exe
 
 # ───── Project Folders to Ignore ─────
+dataset/
 Documentation/
 .zencoder/
 

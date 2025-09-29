@@ -519,7 +519,7 @@ if __name__ == "__main__":
         else:
             print("⚠ WARNING: Could not activate honeypot - CAPTCHA may not trigger")
 
-        # 3) Click the Sign In button (this should trigger CAPTCHA due to honeypot)
+        # 3) Click the Sign-In button (this should trigger CAPTCHA due to honeypot)
         print("🚀 Submitting form with honeypot activated...")
         sign_in_button = bot.wait_for_clickable_element(By.XPATH, "//button[normalize-space()='Sign In']")
         if sign_in_button:

@@ -51,9 +51,29 @@ async function runMLDetection(sessionId) {
     
     const PYTHON_SCRIPT_PATH = path.join(__dirname, '..', '..', '..', 'src', 'core', 'optimized_bot_detection.py');
     
+    // Determine the correct Python executable path (same logic as botDetection.js)
+    const projectRoot = path.join(__dirname, '..', '..', '..');
+    const venvPythonPath = path.join(projectRoot, '.venv', 'bin', 'python');
+    const systemPythonPath = 'python3'; // Fallback to system python3
+    
+    // Try virtual environment Python first, then fallback to system python3
+    let pythonCommand;
+    try {
+      if (fs.existsSync(venvPythonPath)) {
+        pythonCommand = venvPythonPath;
+        console.log('Using virtual environment Python for ML detection:', pythonCommand);
+      } else {
+        pythonCommand = systemPythonPath;
+        console.log('Using system Python for ML detection:', pythonCommand);
+      }
+    } catch (error) {
+      pythonCommand = systemPythonPath;
+      console.log('Fallback to system Python for ML detection:', pythonCommand);
+    }
+    
     return new Promise((resolve, reject) => {
-      const pythonProcess = spawn('python', [PYTHON_SCRIPT_PATH], {
-        cwd: path.join(__dirname, '..', '..', '..'),
+      const pythonProcess = spawn(pythonCommand, [PYTHON_SCRIPT_PATH], {
+        cwd: projectRoot,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
       });

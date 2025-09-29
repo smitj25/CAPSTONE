@@ -204,7 +204,7 @@ async function handler(req, res) {
   }
 
   try {
-    const { sessionId, recaptchaToken } = req.body;
+    const { sessionId, recaptchaToken, honeypotData } = req.body;
     
     // Rate limiting check
     const clientId = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
@@ -244,6 +244,14 @@ async function handler(req, res) {
 
     console.log('Starting optimized bot detection analysis...');
     
+    // Log honeypot data if provided
+    if (honeypotData) {
+      console.log('Honeypot data received:', {
+        isTriggered: honeypotData.isTriggered,
+        value: honeypotData.value ? '***' : 'empty'
+      });
+    }
+    
     // Verify reCAPTCHA token if provided
     let recaptchaAnalysis = null;
     if (recaptchaToken) {
@@ -263,9 +271,29 @@ async function handler(req, res) {
       ? OPTIMIZED_PYTHON_SCRIPT_PATH 
       : PYTHON_SCRIPT_PATH;
     
+    // Determine the correct Python executable path
+    const projectRoot = path.join(__dirname, '..', '..', '..');
+    const venvPythonPath = path.join(projectRoot, '.venv', 'bin', 'python');
+    const systemPythonPath = 'python3'; // Fallback to system python3
+    
+    // Try virtual environment Python first, then fallback to system python3
+    let pythonCommand;
+    try {
+      if (fs.existsSync(venvPythonPath)) {
+        pythonCommand = venvPythonPath;
+        console.log('Using virtual environment Python:', pythonCommand);
+      } else {
+        pythonCommand = systemPythonPath;
+        console.log('Using system Python:', pythonCommand);
+      }
+    } catch (error) {
+      pythonCommand = systemPythonPath;
+      console.log('Fallback to system Python:', pythonCommand);
+    }
+
     // Run the Python ML script with optimized parameters
-    const pythonProcess = spawn('python', [scriptPath, '--fast', '--session-id', sessionId], {
-      cwd: path.join(__dirname, '..', '..', '..'), // Set working directory to project root
+    const pythonProcess = spawn(pythonCommand, [scriptPath, '--fast', '--session-id', sessionId], {
+      cwd: projectRoot, // Set working directory to project root
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { 
         ...process.env, 
@@ -283,11 +311,13 @@ async function handler(req, res) {
     const timeout = setTimeout(() => {
       pythonProcess.kill('SIGTERM');
       console.error('Bot detection timed out');
-      res.status(408).json({
-        success: false,
-        error: 'Bot detection timed out',
-        details: 'Processing took too long'
-      });
+      if (!res.headersSent) {
+        res.status(408).json({
+          success: false,
+          error: 'Bot detection timed out',
+          details: 'Processing took too long'
+        });
+      }
     }, 15000); // 15 second timeout
 
     // Collect stdout
@@ -343,11 +373,13 @@ async function handler(req, res) {
       } else {
         console.error('Python script failed with code:', code);
         console.error('Error output:', errorOutput);
-        res.status(500).json({
-          success: false,
-          error: 'Bot detection failed',
-          details: errorOutput
-        });
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: 'Bot detection failed',
+            details: errorOutput
+          });
+        }
       }
     });
 
@@ -355,20 +387,24 @@ async function handler(req, res) {
     pythonProcess.on('error', (error) => {
       clearTimeout(timeout);
       console.error('Failed to start Python process:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to start bot detection process',
-        details: error.message
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to start bot detection process',
+          details: error.message
+        });
+      }
     });
 
   } catch (error) {
     console.error('Error in bot detection handler:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      details: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        details: error.message
+      });
+    }
   }
 }
 

@@ -671,10 +671,14 @@ const LoginPage = ({ onLoginSuccess }) => {
     const startTime = Date.now();
     
     try {
-      // Prepare request body with reCAPTCHA token
+      // Prepare request body with reCAPTCHA token and honeypot data
       const requestBody = { 
         sessionId,
-        recaptchaToken: recaptchaToken || null
+        recaptchaToken: recaptchaToken || null,
+        honeypotData: {
+          isTriggered: !!formData.honeypotField,
+          value: formData.honeypotField || ''
+        }
       };
 
       const response = await fetch('/api/bot-detection', {

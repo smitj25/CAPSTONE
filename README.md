@@ -137,8 +137,8 @@ pip install -r requirements.txt
 # Verify model files exist
 ls models/
 # Should show:
-# - web_log_detector_comprehensive.pkl
-# - mouse_movement_detector_comprehensive.h5
+# - logs_model.pkl
+# - mouse_model.h5
 ```
 
 #### 2. Frontend Setup (React Application)

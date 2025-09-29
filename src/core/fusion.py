@@ -20,25 +20,28 @@ class BotDetectionFusion:
                  high_threshold: float = 0.65,
                  low_threshold: float = 0.35,
                  final_threshold: float = 0.45,
-                 mouse_weight: float = 0.6,
-                 web_log_weight: float = 0.4):
+                 mouse_weight: float = 0.4,
+                 web_log_weight: float = 0.3,
+                 honeypot_weight: float = 0.3):
         """
         Initialize the fusion module.
         
         Args:
             web_log_model_path: Path to the trained web log detection model
             mouse_movement_model_path: Path to the trained mouse movement detection model
-            high_threshold: High threshold for mouse movement score (default: 0.7)
-            low_threshold: Low threshold for mouse movement score (default: 0.3)
-            final_threshold: Final decision threshold (default: 0.5)
-            mouse_weight: Weight for mouse movement score in fusion (default: 0.5)
-            web_log_weight: Weight for web log score in fusion (default: 0.5)
+            high_threshold: High threshold for mouse movement score (default: 0.65)
+            low_threshold: Low threshold for mouse movement score (default: 0.35)
+            final_threshold: Final decision threshold (default: 0.45)
+            mouse_weight: Weight for mouse movement score in fusion (default: 0.4)
+            web_log_weight: Weight for web log score in fusion (default: 0.3)
+            honeypot_weight: Weight for honeypot score in fusion (default: 0.3)
         """
         self.high_threshold = high_threshold
         self.low_threshold = low_threshold
         self.final_threshold = final_threshold
         self.mouse_weight = mouse_weight
         self.web_log_weight = web_log_weight
+        self.honeypot_weight = honeypot_weight
         
         # Load models if paths are provided
         self.web_log_model = None
@@ -75,7 +78,19 @@ class BotDetectionFusion:
             model_path: Path to the saved mouse movement model
         """
         try:
-            self.mouse_movement_model = tf.keras.models.load_model(model_path)
+            self.mouse_movement_model = tf.keras.models.load_model(model_path, compile=False)
+            
+            # Recompile to avoid warnings about missing metrics
+            try:
+                self.mouse_movement_model.compile(
+                    optimizer='adam',
+                    loss='binary_crossentropy',
+                    metrics=['accuracy']
+                )
+            except:
+                # If compilation fails, model still works for inference
+                pass
+                
             print(f"Mouse movement model loaded from {model_path}")
         except Exception as e:
             print(f"Error loading mouse movement model: {e}")
@@ -143,36 +158,87 @@ class BotDetectionFusion:
             print(f"Error predicting mouse movement score: {e}")
             return 0.5  # Return neutral score on error
     
-    def fuse_scores(self, mouse_score: float, web_log_score: float) -> float:
+    def calculate_honeypot_score(self, honeypot_data: Dict) -> float:
         """
-        Fuse the scores from both detection modules using the decision-level fusion method.
+        Calculate bot probability based on honeypot data.
+        
+        Args:
+            honeypot_data: Dictionary containing honeypot information
+            
+        Returns:
+            float: Bot probability score (0-1)
+        """
+        if not honeypot_data:
+            return 0.0  # No honeypot data means likely human
+        
+        is_triggered = honeypot_data.get('isTriggered', False)
+        honeypot_value = honeypot_data.get('honeypotValue', '')
+        
+        if not is_triggered or not honeypot_value:
+            return 0.0  # No honeypot trigger means likely human
+        
+        # Common bot values that strongly indicate automation
+        common_bot_values = [
+            'spam', 'bot', 'automation', 'script', 'crawler', 'scraper',
+            'test', 'admin', 'root', 'user', 'guest', 'anonymous'
+        ]
+        
+        # Check for common bot values
+        if any(bot_value in honeypot_value.lower() for bot_value in common_bot_values):
+            return 0.95  # Very high bot probability
+        
+        # Any non-empty value in honeypot indicates bot behavior
+        if honeypot_value.strip():
+            return 0.85  # High bot probability
+        
+        return 0.0  # Empty or None values indicate human
+    
+    def fuse_scores(self, mouse_score: float, web_log_score: float, honeypot_score: float = 0.0) -> float:
+        """
+        Fuse the scores from all detection modules using the decision-level fusion method.
         
         Args:
             mouse_score: Bot probability from mouse movement detection (0-1)
             web_log_score: Bot probability from web log detection (0-1)
+            honeypot_score: Bot probability from honeypot detection (0-1)
             
         Returns:
             float: Final fused bot probability score (0-1)
         """
+        # Honeypot score takes precedence if triggered
+        if honeypot_score > 0.5:
+            # If honeypot is triggered, give it higher weight
+            fused_score = (0.1 * mouse_score + 
+                          0.1 * web_log_score + 
+                          0.8 * honeypot_score)
+            print(f"Honeypot triggered (score: {honeypot_score:.3f}). Using honeypot-weighted fusion: {fused_score:.3f}")
+            return fused_score
+        
         # Check if mouse movement score is very high or very low
         if mouse_score > self.high_threshold or mouse_score < self.low_threshold:
-            # Rely solely on mouse movement score
-            print(f"Mouse score ({mouse_score:.3f}) outside thresholds [{self.low_threshold}, {self.high_threshold}]. Using mouse score only.")
-            return mouse_score
+            # Rely primarily on mouse movement score, but still consider honeypot
+            if honeypot_score > 0.3:  # Honeypot has some influence
+                fused_score = (0.7 * mouse_score + 0.3 * honeypot_score)
+            else:
+                fused_score = mouse_score
+            print(f"Mouse score ({mouse_score:.3f}) outside thresholds [{self.low_threshold}, {self.high_threshold}]. Using mouse-priority fusion: {fused_score:.3f}")
+            return fused_score
         else:
-            # Use weighted average of both scores
+            # Use weighted average of all three scores
             fused_score = (self.mouse_weight * mouse_score + 
-                          self.web_log_weight * web_log_score)
+                          self.web_log_weight * web_log_score +
+                          self.honeypot_weight * honeypot_score)
             print(f"Mouse score ({mouse_score:.3f}) within thresholds. Using weighted average: {fused_score:.3f}")
             return fused_score
     
-    def classify_session(self, mouse_score: float, web_log_score: float) -> Tuple[bool, float]:
+    def classify_session(self, mouse_score: float, web_log_score: float, honeypot_score: float = 0.0) -> Tuple[bool, float]:
         """
         Classify a session as human or bot based on fused scores.
         
         Args:
             mouse_score: Bot probability from mouse movement detection (0-1)
             web_log_score: Bot probability from web log detection (0-1)
+            honeypot_score: Bot probability from honeypot detection (0-1)
             
         Returns:
             Tuple[bool, float]: (is_bot, final_score)
@@ -180,7 +246,7 @@ class BotDetectionFusion:
                 - final_score: Final fused bot probability score
         """
         # Fuse the scores
-        final_score = self.fuse_scores(mouse_score, web_log_score)
+        final_score = self.fuse_scores(mouse_score, web_log_score, honeypot_score)
         
         # Make final decision
         is_bot = final_score > self.final_threshold
@@ -190,16 +256,20 @@ class BotDetectionFusion:
     def process_session(self, 
                        web_log_features=None, 
                        mouse_movement_matrices=None,
+                       honeypot_data=None,
                        mouse_score=None,
-                       web_log_score=None) -> Dict[str, Union[bool, float]]:
+                       web_log_score=None,
+                       honeypot_score=None) -> Dict[str, Union[bool, float]]:
         """
         Process a complete session and return classification results.
         
         Args:
             web_log_features: Web log features for the session (optional if web_log_score provided)
             mouse_movement_matrices: Mouse movement matrices for the session (optional if mouse_score provided)
+            honeypot_data: Honeypot data for the session (optional if honeypot_score provided)
             mouse_score: Pre-computed mouse movement score (optional)
             web_log_score: Pre-computed web log score (optional)
+            honeypot_score: Pre-computed honeypot score (optional)
             
         Returns:
             Dict containing:
@@ -207,7 +277,8 @@ class BotDetectionFusion:
                 - final_score: Final fused score
                 - mouse_score: Mouse movement score used
                 - web_log_score: Web log score used
-                - fusion_method: Method used for fusion ("mouse_only" or "weighted_average")
+                - honeypot_score: Honeypot score used
+                - fusion_method: Method used for fusion ("honeypot_weighted", "mouse_only", or "weighted_average")
         """
         # Get scores (either from models or provided directly)
         if mouse_score is None and mouse_movement_matrices is not None:
@@ -220,20 +291,28 @@ class BotDetectionFusion:
         elif web_log_score is None:
             web_log_score = 0.5  # Default neutral score
         
+        if honeypot_score is None and honeypot_data is not None:
+            honeypot_score = self.calculate_honeypot_score(honeypot_data)
+        elif honeypot_score is None:
+            honeypot_score = 0.0  # Default human score (no honeypot trigger)
+        
         # Determine fusion method
-        if mouse_score > self.high_threshold or mouse_score < self.low_threshold:
+        if honeypot_score > 0.5:
+            fusion_method = "honeypot_weighted"
+        elif mouse_score > self.high_threshold or mouse_score < self.low_threshold:
             fusion_method = "mouse_only"
         else:
             fusion_method = "weighted_average"
         
         # Fuse scores and classify
-        is_bot, final_score = self.classify_session(mouse_score, web_log_score)
+        is_bot, final_score = self.classify_session(mouse_score, web_log_score, honeypot_score)
         
         return {
             'is_bot': is_bot,
             'final_score': final_score,
             'mouse_score': mouse_score,
             'web_log_score': web_log_score,
+            'honeypot_score': honeypot_score,
             'fusion_method': fusion_method
         }
     
@@ -283,8 +362,8 @@ class BotDetectionFusion:
 if __name__ == "__main__":
     # Initialize fusion module
     fusion = BotDetectionFusion(
-        web_log_model_path='models/web_log_detector_comprehensive.pkl',
-        mouse_movement_model_path='models/mouse_movement_detector_comprehensive.h5'
+        web_log_model_path='models/logs_model.pkl',
+        mouse_movement_model_path='models/mouse_model.h5'
     )
     
     # Example session processing
@@ -310,8 +389,22 @@ if __name__ == "__main__":
     print("\n--- Example 3: Moderate mouse movement (weighted average) ---")
     result3 = fusion.process_session(
         mouse_score=0.55,  # Moderate bot probability from mouse movements
-        web_log_score=0.60  # Moderate bot probability from web logs
+        web_log_score=0.60,  # Moderate bot probability from web logs
+        honeypot_score=0.0   # No honeypot trigger
     )
     print(f"Result: {result3}")
+    
+    # Example 4: Honeypot triggered (high priority)
+    print("\n--- Example 4: Honeypot triggered (high priority) ---")
+    honeypot_data = {
+        'isTriggered': True,
+        'honeypotValue': 'bot'
+    }
+    result4 = fusion.process_session(
+        mouse_score=0.2,   # Low bot probability from mouse movements
+        web_log_score=0.3, # Low bot probability from web logs
+        honeypot_data=honeypot_data  # Honeypot triggered with bot value
+    )
+    print(f"Result: {result4}")
     
     print("\n=== Fusion System Ready ===")

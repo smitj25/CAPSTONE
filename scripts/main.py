@@ -14,10 +14,9 @@ The system follows the research paper's approach:
 """
 
 import os
-import sys
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import importlib.util
 
 # Load core modules directly from file paths to avoid import path issues
@@ -61,8 +60,8 @@ class ComprehensiveBotDetectionSystem:
         # Resolve repository root and default paths
         repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
         self.dataset_base_path = dataset_base_path or os.path.join(repo_root, 'data')
-        self.web_log_model_path = web_log_model_path or os.path.join(repo_root, 'models', 'web_log_detector_comprehensive.pkl')
-        self.mouse_movement_model_path = mouse_movement_model_path or os.path.join(repo_root, 'models', 'mouse_movement_detector_comprehensive.h5')
+        self.web_log_model_path = web_log_model_path or os.path.join(repo_root, 'models', 'logs_model.pkl')
+        self.mouse_movement_model_path = mouse_movement_model_path or os.path.join(repo_root, 'models', 'mouse_model.h5')
         
         # Initialize detection modules
         self.web_log_detector = WebLogDetectionBot()
@@ -115,13 +114,13 @@ class ComprehensiveBotDetectionSystem:
         # Require pre-trained models; provide clear guidance if missing
         if not self.web_log_trained:
             raise RuntimeError(
-                "Missing web log model. Copy 'web_log_detector_comprehensive.pkl' to "
+                "Missing web log model. Copy 'logs_model.pkl' to "
                 f"{self.web_log_model_path}"
             )
         
         if not self.mouse_movement_trained:
             raise RuntimeError(
-                "Missing mouse movement model. Copy 'mouse_movement_detector_comprehensive.h5' to "
+                "Missing mouse movement model. Copy 'mouse_model.h5' to "
                 f"{self.mouse_movement_model_path}"
             )
         

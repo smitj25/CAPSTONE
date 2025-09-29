@@ -12,13 +12,15 @@ This script provides a faster version of bot detection with:
 import os
 import json
 import numpy as np
-import pandas as pd
 import argparse
 import time
 import sys
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Any
 import threading
-from functools import lru_cache
+import warnings
+
+# Suppress sklearn version compatibility warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 
 # Add the current directory to Python path to import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -54,9 +56,15 @@ class OptimizedBotDetector:
                 print("Loading models (this may take a few seconds)...")
                 start_time = time.time()
                 
-                # Import modules
-                from web_log_detection_bot import WebLogDetectionBot
-                from mouse_movements_detection_bot import MouseMovementDetectionBot
+                # Import modules (clear cache to ensure latest version)
+                import sys
+                modules_to_clear = ['web_log_detection_bot', 'mouse_movements_detection_bot', 'fusion']
+                for module in modules_to_clear:
+                    if module in sys.modules:
+                        del sys.modules[module]
+                
+                from web_logs import WebLogDetectionBot
+                from mouse_movements import MouseMovementDetectionBot
                 from fusion import BotDetectionFusion
                 
                 # Initialize detectors
@@ -64,8 +72,8 @@ class OptimizedBotDetector:
                 self.mouse_movement_detector = MouseMovementDetectionBot()
                 
                 # Load models
-                web_log_model_path = 'models/web_log_detector_comprehensive.pkl'
-                mouse_movement_model_path = 'models/mouse_movement_detector_comprehensive.h5'
+                web_log_model_path = 'models/logs_model.pkl'
+                mouse_movement_model_path = 'models/mouse_model.h5'
                 
                 if os.path.exists(web_log_model_path):
                     self.web_log_detector.load_model(web_log_model_path)
@@ -362,6 +370,20 @@ class OptimizedBotDetector:
                         'penalty': round(behavior_penalty, 4)
                     }
 
+            # Load honeypot data if present
+            honeypot_file = os.path.join(logs_dir, 'honeypot.json')
+            honeypot_data = None
+            if os.path.exists(honeypot_file):
+                with open(honeypot_file, 'r') as f:
+                    honeypot_data = json.load(f)
+                # Filter for session
+                if session_id:
+                    honeypot_data = [h for h in honeypot_data if h.get('sessionId') == session_id]
+                if honeypot_data:
+                    # Use latest honeypot data
+                    honeypot_data = honeypot_data[-1]
+                    results['honeypot'] = honeypot_data
+
             # Process login attempts
             login_file = os.path.join(logs_dir, 'login_attempts.json')
             if os.path.exists(login_file):
@@ -388,13 +410,20 @@ class OptimizedBotDetector:
                             # Use fusion for final classification
                             # Apply behavior penalty by increasing mouse_score
                             penalized_mouse = min(1.0, mouse_score + behavior_penalty)
-                            fusion_score = self.fusion.fuse_scores(penalized_mouse, web_score)
-                            final_classification = self.fusion.classify_session(penalized_mouse, web_score)
+                            
+                            # Calculate honeypot score
+                            honeypot_score = 0.0
+                            if honeypot_data:
+                                honeypot_score = self.fusion.calculate_honeypot_score(honeypot_data)
+                            
+                            fusion_score = self.fusion.fuse_scores(penalized_mouse, web_score, honeypot_score)
+                            final_classification = self.fusion.classify_session(penalized_mouse, web_score, honeypot_score)
                             
                             results['loginAttempts'].append({
                                 'attemptNumber': i + 1,
                                 'mouseScore': penalized_mouse,
                                 'webScore': web_score,
+                                'honeypotScore': honeypot_score,
                                 'fusionScore': fusion_score,
                                 'classification': 'BOT' if final_classification[0] else 'HUMAN'
                             })
@@ -482,6 +511,7 @@ def main():
             print(f"Login Attempt {attempt['attemptNumber']}")
             print(f"Mouse Score: {attempt['mouseScore']:.4f}")
             print(f"Web Score: {attempt['webScore']:.4f}")
+            print(f"Honeypot Score: {attempt.get('honeypotScore', 0.0):.4f}")
             print(f"Fusion Score: {attempt['fusionScore']:.4f}")
             print(f"Final Classification: {attempt['classification']}")
         

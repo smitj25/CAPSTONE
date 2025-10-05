@@ -11,21 +11,22 @@ import matplotlib.pyplot as plt
 
 class MouseMovementDetectionBot:
     def __init__(self):
-        self.model = None
+        self.training_histories = []  # Store training histories for subplot generation
         self.input_shape = (480, 1320, 1)  # Cropped from 1080x1920 with 300px offset
-        self._build_model()
+        self.model = self._build_model()
         
     def _build_model(self):
-        self.model = Sequential()
-        self.model.add(Input(shape=self.input_shape))
-        self.model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
-        self.model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
-        self.model.add(MaxPooling2D(pool_size=(4, 4), strides=(4, 4)))
-        self.model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
-        self.model.add(MaxPooling2D(pool_size=(4, 4), strides=(4, 4)))
-        self.model.add(Flatten())
-        self.model.add(Dense(2, activation='softmax'))
-        self.model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+        model = Sequential()
+        model.add(Input(shape=self.input_shape))
+        model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
+        model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(4, 4), strides=(4, 4)))
+        model.add(Conv2D(64, kernel_size=(3, 3), strides=(2, 2), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(4, 4), strides=(4, 4)))
+        model.add(Flatten())
+        model.add(Dense(2, activation='softmax'))
+        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+        return model
     
     def _preprocess_mouse_movements(self, mouse_data, phase='phase1'):
         matrices = []
@@ -135,13 +136,18 @@ class MouseMovementDetectionBot:
         
         return matrices
     
-    def train(self, train_data, train_labels, epochs=10, batch_size=32, validation_split=0.2):
+    def train(self, train_data, train_labels, epochs=10, batch_size=32, validation_split=0.2, sequence_name="Training"):
         # Convert labels to one-hot encoding
         train_labels_one_hot = tf.keras.utils.to_categorical(train_labels, num_classes=2)
         history = self.model.fit(train_data, train_labels_one_hot, epochs=epochs, batch_size=batch_size, validation_split=validation_split)
         
-        # Generate and save accuracy and loss graphs
-        self.generate_training_graphs(history)
+        # Store history with sequence name for subplot generation
+        self.training_histories.append({
+            'history': history,
+            'sequence_name': sequence_name
+        })
+        
+        return history
     
     def predict(self, matrices):
         if not matrices:
@@ -178,6 +184,11 @@ class MouseMovementDetectionBot:
         Args:
             model_path (str): Path to the saved model
         """
+        # Get project root directory if model_path is not absolute
+        if not os.path.isabs(model_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            model_path = os.path.join(project_root, model_path)
+            
         self.model = tf.keras.models.load_model(model_path, compile=False)
         
         # Recompile to avoid warnings about missing metrics
@@ -198,43 +209,86 @@ class MouseMovementDetectionBot:
         Args:
             model_path (str): Path to save the model
         """
+        # Get project root directory if model_path is not absolute
+        if not os.path.isabs(model_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            model_path = os.path.join(project_root, model_path)
+            
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
         self.model.save(model_path)
         
-    def generate_training_graphs(self, history):
+    def generate_training_graphs(self):
         """
-        Generate and save accuracy and loss graphs for the training process.
+        Generate and save accuracy and loss graphs with subplots for each training sequence.
+        """
+        if not self.training_histories:
+            print("No training histories available for graph generation.")
+            return
+            
+        # Get project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
-        Args:
-            history: Training history object from model.fit()
-        """
         # Create results directory if it doesn't exist
-        os.makedirs('results', exist_ok=True)
+        results_dir = os.path.join(project_root, 'results')
+        os.makedirs(results_dir, exist_ok=True)
         
-        # Plot training & validation accuracy
-        plt.figure(figsize=(10, 6))
-        plt.plot(history.history['accuracy'], label='Training Accuracy')
-        plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-        plt.title('Mouse Movement Model: Training and Validation Accuracy')
-        plt.xlabel('Epoch')
-        plt.ylabel('Accuracy')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig('results/mouse_movement_accuracy.png', dpi=300, bbox_inches='tight')
+        num_sequences = len(self.training_histories)
+        
+        # Create accuracy subplot figure
+        fig_acc, axes_acc = plt.subplots(2, 2, figsize=(15, 12))
+        fig_acc.suptitle('Mouse Movement Model: Training and Validation Accuracy', fontsize=16)
+        axes_acc = axes_acc.flatten()
+        
+        # Create loss subplot figure
+        fig_loss, axes_loss = plt.subplots(2, 2, figsize=(15, 12))
+        fig_loss.suptitle('Mouse Movement Model: Training and Validation Loss', fontsize=16)
+        axes_loss = axes_loss.flatten()
+        
+        for i, training_data in enumerate(self.training_histories):
+            history = training_data['history']
+            sequence_name = training_data['sequence_name']
+            
+            # Plot accuracy
+            if i < len(axes_acc):
+                axes_acc[i].plot(history.history['accuracy'], label='Training Accuracy', color='blue')
+                axes_acc[i].plot(history.history['val_accuracy'], label='Validation Accuracy', color='orange')
+                axes_acc[i].set_title(f'{sequence_name}')
+                axes_acc[i].set_xlabel('Epoch')
+                axes_acc[i].set_ylabel('Accuracy')
+                axes_acc[i].legend()
+                axes_acc[i].grid(True)
+            
+            # Plot loss
+            if i < len(axes_loss):
+                axes_loss[i].plot(history.history['loss'], label='Training Loss', color='blue')
+                axes_loss[i].plot(history.history['val_loss'], label='Validation Loss', color='orange')
+                axes_loss[i].set_title(f'{sequence_name}')
+                axes_loss[i].set_xlabel('Epoch')
+                axes_loss[i].set_ylabel('Loss')
+                axes_loss[i].legend()
+                axes_loss[i].grid(True)
+        
+        # Hide unused subplots
+        for i in range(num_sequences, len(axes_acc)):
+            axes_acc[i].set_visible(False)
+        for i in range(num_sequences, len(axes_loss)):
+            axes_loss[i].set_visible(False)
+        
+        # Save figures
+        plt.figure(fig_acc.number)
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_dir, 'mouse_movement_accuracy.png'), dpi=300, bbox_inches='tight')
         plt.close()
         
-        # Plot training & validation loss
-        plt.figure(figsize=(10, 6))
-        plt.plot(history.history['loss'], label='Training Loss')
-        plt.plot(history.history['val_loss'], label='Validation Loss')
-        plt.title('Mouse Movement Model: Training and Validation Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig('results/mouse_movement_loss.png', dpi=300, bbox_inches='tight')
+        plt.figure(fig_loss.number)
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_dir, 'mouse_movement_loss.png'), dpi=300, bbox_inches='tight')
         plt.close()
         
-        print("Mouse movement model training graphs saved to 'results' directory")
+        print(f"Training graphs saved to {results_dir}")
+        print(f"- mouse_movement_accuracy.png (with {num_sequences} subplots)")
+        print(f"- mouse_movement_loss.png (with {num_sequences} subplots)")
 
     def train_sequentially(self, phase1_data, phase1_labels, phase2_data=None, phase2_labels=None, 
                           phase1_epochs=10, phase2_epochs=5, batch_size=32, validation_split=0.2):
@@ -726,9 +780,12 @@ class MouseMovementDetectionBot:
 
 # Example usage
 if __name__ == "__main__":
+    # Get project root directory
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
     # Dataset paths
-    dataset_base_phase1 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
-    dataset_base_phase2 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase2'
+    dataset_base_phase1 = os.path.join(project_root, 'dataset/phase1')
+    dataset_base_phase2 = os.path.join(project_root, 'dataset/phase2')
 
     # Initialize the mouse movement detector
     detector = MouseMovementDetectionBot()
@@ -751,7 +808,7 @@ if __name__ == "__main__":
         phase1_d1_train_labels = np.array(phase1_d1_train_labels)
         
         print(f"Training on Phase 1 D1: {len(phase1_d1_train_matrices)} matrices")
-        detector.train(phase1_d1_train_data, phase1_d1_train_labels, epochs=10, batch_size=32)
+        detector.train(phase1_d1_train_data, phase1_d1_train_labels, epochs=10, batch_size=32, sequence_name="Phase 1 D1")
         print("Phase 1 D1 training completed.")
     else:
         print("No Phase 1 D1 training data found.")
@@ -770,7 +827,7 @@ if __name__ == "__main__":
         phase1_d2_train_labels = np.array(phase1_d2_train_labels)
         
         print(f"Training on Phase 1 D2: {len(phase1_d2_train_matrices)} matrices")
-        detector.train(phase1_d2_train_data, phase1_d2_train_labels, epochs=10, batch_size=32)
+        detector.train(phase1_d2_train_data, phase1_d2_train_labels, epochs=10, batch_size=32, sequence_name="Phase 1 D2")
         print("Phase 1 D2 training completed.")
     else:
         print("No Phase 1 D2 training data found.")
@@ -790,7 +847,7 @@ if __name__ == "__main__":
         phase2_d1_train_labels = np.array(phase2_d1_train_labels)
         
         print(f"Training on Phase 2 D1: {len(phase2_d1_train_matrices)} matrices")
-        detector.train(phase2_d1_train_data, phase2_d1_train_labels, epochs=5, batch_size=32)
+        detector.train(phase2_d1_train_data, phase2_d1_train_labels, epochs=5, batch_size=32, sequence_name="Phase 2 D1")
         print("Phase 2 D1 training completed.")
     else:
         print("No Phase 2 D1 training data found.")
@@ -809,16 +866,19 @@ if __name__ == "__main__":
         phase2_d2_train_labels = np.array(phase2_d2_train_labels)
         
         print(f"Training on Phase 2 D2: {len(phase2_d2_train_matrices)} matrices")
-        detector.train(phase2_d2_train_data, phase2_d2_train_labels, epochs=5, batch_size=32)
+        detector.train(phase2_d2_train_data, phase2_d2_train_labels, epochs=5, batch_size=32, sequence_name="Phase 2 D2")
         print("Phase 2 D2 training completed.")
     else:
         print("No Phase 2 D2 training data found.")
 
-    # Save final comprehensive model (single file)
+    # Save final model
     final_model_path = 'models/mouse_model.h5'
     detector.save_model(final_model_path)
     print(f"\nFinal comprehensive model saved to {final_model_path}")
-
+    
+    # Generate training graphs with all sequences
+    detector.generate_training_graphs()
+    
     # === COMPREHENSIVE TESTING PHASE ===
     print("\n" + "="*60)
     print("COMPREHENSIVE TESTING ON ALL DATASETS")

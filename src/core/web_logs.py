@@ -12,6 +12,7 @@ import os
 import pickle
 import warnings
 import matplotlib.pyplot as plt
+from sklearn.metrics import log_loss
 
 # Suppress sklearn version compatibility warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -25,6 +26,7 @@ class WebLogDetectionBot:
         self.model = None
         self.selected_features = None
         self.is_trained = False
+        self.training_histories = []
         
         # Define the selected features based on SFFS algorithm results
         self.selected_features = [
@@ -357,7 +359,7 @@ class WebLogDetectionBot:
         
         return pd.DataFrame(features)
     
-    def train(self, X_train, y_train, validation_split=0.2):
+    def train(self, X_train, y_train, validation_split=0.2, sequence_name="Training"):
         """
         Train the model on the provided training data.
         
@@ -365,6 +367,7 @@ class WebLogDetectionBot:
             X_train (pandas.DataFrame): Training features
             y_train (pandas.Series): Training labels
             validation_split (float): Fraction of data to use for validation
+            sequence_name (str): Name of the training sequence for tracking
         """
         # Select only the features determined by feature selection
         X_train_selected = X_train[self.selected_features]
@@ -416,8 +419,16 @@ class WebLogDetectionBot:
         self.model.fit(X_train_scaled, y_train)
         self.is_trained = True
         
-        # Generate and save training graphs
-        self.generate_training_graphs(train_scores, val_scores, train_losses, val_losses)
+        # Store training history for subplot generation
+        history = {
+            'train_scores': train_scores,
+            'val_scores': val_scores,
+            'train_losses': train_losses,
+            'val_losses': val_losses
+        }
+        self.training_histories.append((sequence_name, history))
+        
+        return history
     
     def predict(self, X_test):
         """
@@ -742,17 +753,26 @@ class WebLogDetectionBot:
     
     def save_model(self, model_path):
         """
-        Save the trained model to disk.
+        Save the trained model and scaler to disk.
         
         Args:
             model_path (str): Path to save the model
         """
+        # Get project root directory if model_path is not absolute
+        if not os.path.isabs(model_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            model_path = os.path.join(project_root, model_path)
+            
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        
         model_data = {
             'model': self.model,
             'scaler': self.scaler,
             'selected_features': self.selected_features,
             'is_trained': self.is_trained
         }
+        
         with open(model_path, 'wb') as f:
             pickle.dump(model_data, f)
     
@@ -763,6 +783,11 @@ class WebLogDetectionBot:
         Args:
             model_path (str): Path to load the model from
         """
+        # Get project root directory if model_path is not absolute
+        if not os.path.isabs(model_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            model_path = os.path.join(project_root, model_path)
+            
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -774,60 +799,94 @@ class WebLogDetectionBot:
         self.selected_features = model_data['selected_features']
         self.is_trained = model_data['is_trained']
         
-    def generate_training_graphs(self, train_scores, val_scores, train_losses, val_losses):
+    def generate_training_graphs(self):
         """
-        Generate and save accuracy and loss graphs for the training process.
-        
-        Args:
-            train_scores: List of training accuracy scores
-            val_scores: List of validation accuracy scores
-            train_losses: List of training loss values
-            val_losses: List of validation loss values
+        Generate training graphs with subplots for each training sequence.
+        Creates two figures: one for accuracy and one for loss.
         """
-        # Create results directory if it doesn't exist
-        os.makedirs('results', exist_ok=True)
+        if not self.training_histories:
+            print("No training histories available for plotting.")
+            return
         
-        # Get estimator names for x-axis labels
-        estimator_names = [name for name, _ in self.model.estimators]
+        # Calculate project root for saving graphs
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        results_dir = os.path.join(project_root, 'results')
+        os.makedirs(results_dir, exist_ok=True)
         
-        # Plot training & validation accuracy
-        plt.figure(figsize=(10, 6))
-        plt.plot(estimator_names, train_scores, 'o-', label='Training Accuracy')
-        plt.plot(estimator_names, val_scores, 'o-', label='Validation Accuracy')
-        plt.title('Web Logs Model: Training and Validation Accuracy')
-        plt.xlabel('Estimator')
-        plt.ylabel('Accuracy')
-        plt.ylim(0, 1)
-        plt.legend()
-        plt.grid(True)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig('results/web_logs_accuracy.png', dpi=300, bbox_inches='tight')
-        plt.close()
+        num_sequences = len(self.training_histories)
         
-        # Plot training & validation loss
-        plt.figure(figsize=(10, 6))
-        plt.plot(estimator_names, train_losses, 'o-', label='Training Loss')
-        plt.plot(estimator_names, val_losses, 'o-', label='Validation Loss')
-        plt.title('Web Logs Model: Training and Validation Loss')
-        plt.xlabel('Estimator')
-        plt.ylabel('Loss (Log Loss)')
-        plt.legend()
-        plt.grid(True)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig('results/web_logs_loss.png', dpi=300, bbox_inches='tight')
-        plt.close()
+        # Create accuracy subplot figure
+        fig_acc, axes_acc = plt.subplots(2, 2, figsize=(15, 10))
+        fig_acc.suptitle('Web Log Detection - Training Accuracy by Sequence', fontsize=16)
+        axes_acc = axes_acc.flatten()
         
-        print("Web logs model training graphs saved to 'results' directory")
+        # Create loss subplot figure
+        fig_loss, axes_loss = plt.subplots(2, 2, figsize=(15, 10))
+        fig_loss.suptitle('Web Log Detection - Training Loss by Sequence', fontsize=16)
+        axes_loss = axes_loss.flatten()
+        
+        for i, (sequence_name, history) in enumerate(self.training_histories):
+            if i >= 4:  # Limit to 4 subplots
+                break
+                
+            # Plot accuracy
+            ax_acc = axes_acc[i]
+            if history['train_scores']:
+                epochs = range(1, len(history['train_scores']) + 1)
+                ax_acc.plot(epochs, history['train_scores'], 'b-', label='Training Accuracy', linewidth=2)
+                if history['val_scores']:
+                    ax_acc.plot(epochs, history['val_scores'], 'r-', label='Validation Accuracy', linewidth=2)
+                ax_acc.set_title(f'{sequence_name} - Accuracy')
+                ax_acc.set_xlabel('Estimator')
+                ax_acc.set_ylabel('Accuracy')
+                ax_acc.legend()
+                ax_acc.grid(True, alpha=0.3)
+            
+            # Plot loss
+            ax_loss = axes_loss[i]
+            if history['train_losses']:
+                epochs = range(1, len(history['train_losses']) + 1)
+                ax_loss.plot(epochs, history['train_losses'], 'b-', label='Training Loss', linewidth=2)
+                if history['val_losses']:
+                    ax_loss.plot(epochs, history['val_losses'], 'r-', label='Validation Loss', linewidth=2)
+                ax_loss.set_title(f'{sequence_name} - Loss')
+                ax_loss.set_xlabel('Estimator')
+                ax_loss.set_ylabel('Loss')
+                ax_loss.legend()
+                ax_loss.grid(True, alpha=0.3)
+        
+        # Hide unused subplots
+        for i in range(num_sequences, 4):
+            axes_acc[i].set_visible(False)
+            axes_loss[i].set_visible(False)
+        
+        # Adjust layout and save
+        fig_acc.tight_layout()
+        fig_loss.tight_layout()
+        
+        accuracy_path = os.path.join(results_dir, 'web_log_accuracy.png')
+        loss_path = os.path.join(results_dir, 'web_log_loss.png')
+        
+        fig_acc.savefig(accuracy_path, dpi=300, bbox_inches='tight')
+        fig_loss.savefig(loss_path, dpi=300, bbox_inches='tight')
+        
+        plt.close(fig_acc)
+        plt.close(fig_loss)
+        
+        print(f"Training graphs saved:")
+        print(f"  Accuracy: {accuracy_path}")
+        print(f"  Loss: {loss_path}")
 
 # Example usage
 if __name__ == "__main__":
-    # Dataset paths
-    dataset_base_phase1 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase1'
-    dataset_base_phase2 = '/Users/khatuaryan/Desktop/Aryan/Studies/Projects/CAPSTONE/dataset/phase2'
+    # Get project root directory
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    # Initialize the web log detection bot
+    # Dataset paths
+    dataset_base_phase1 = os.path.join(project_root, 'dataset/phase1')
+    dataset_base_phase2 = os.path.join(project_root, 'dataset/phase2')
+
+    # Initialize the web log detector
     detector = WebLogDetectionBot()
     
     print("=== COMPREHENSIVE SEQUENTIAL TRAINING: ALL DATASETS ===")
@@ -846,7 +905,7 @@ if __name__ == "__main__":
     if not phase1_d1_train_data.empty:
         print(f"Training on Phase 1 D1: {len(phase1_d1_train_data)} sessions")
         detector._initialize_model(phase='phase1')
-        detector.train(phase1_d1_train_data, phase1_d1_train_labels)
+        detector.train(phase1_d1_train_data, phase1_d1_train_labels, sequence_name="Phase 1 D1")
         print("Phase 1 D1 training completed.")
     else:
         print("No Phase 1 D1 training data found.")
@@ -862,7 +921,7 @@ if __name__ == "__main__":
     
     if not phase1_d2_train_data.empty:
         print(f"Training on Phase 1 D2: {len(phase1_d2_train_data)} sessions")
-        detector.train(phase1_d2_train_data, phase1_d2_train_labels)
+        detector.train(phase1_d2_train_data, phase1_d2_train_labels, sequence_name="Phase 1 D2")
         print("Phase 1 D2 training completed.")
     else:
         print("No Phase 1 D2 training data found.")
@@ -882,7 +941,7 @@ if __name__ == "__main__":
     if not phase2_d1_train_data.empty:
         print(f"Training on Phase 2 D1: {len(phase2_d1_train_data)} sessions")
         detector._initialize_model(phase='phase2')
-        detector.train(phase2_d1_train_data, phase2_d1_train_labels)
+        detector.train(phase2_d1_train_data, phase2_d1_train_labels, sequence_name="Phase 2 D1")
         print("Phase 2 D1 training completed.")
     else:
         print("No Phase 2 D1 training data found.")
@@ -898,15 +957,18 @@ if __name__ == "__main__":
     
     if not phase2_d2_train_data.empty:
         print(f"Training on Phase 2 D2: {len(phase2_d2_train_data)} sessions")
-        detector.train(phase2_d2_train_data, phase2_d2_train_labels)
+        detector.train(phase2_d2_train_data, phase2_d2_train_labels, sequence_name="Phase 2 D2")
         print("Phase 2 D2 training completed.")
     else:
         print("No Phase 2 D2 training data found.")
     
-    # Save final comprehensive model (single file)
-    final_model_path = 'models/logs_model.pkl'
+    # Save final model
+    final_model_path = os.path.join(project_root, 'models/logs_model.pkl')
     detector.save_model(final_model_path)
     print(f"\nFinal comprehensive model saved to {final_model_path}")
+    
+    # Generate training graphs with all sequences
+    detector.generate_training_graphs()
     
     # === COMPREHENSIVE TESTING PHASE ===
     print("\n" + "="*60)

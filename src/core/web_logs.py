@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import os
 import pickle
 import warnings
+import matplotlib.pyplot as plt
 
 # Suppress sklearn version compatibility warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -356,13 +357,14 @@ class WebLogDetectionBot:
         
         return pd.DataFrame(features)
     
-    def train(self, X_train, y_train):
+    def train(self, X_train, y_train, validation_split=0.2):
         """
         Train the model on the provided training data.
         
         Args:
             X_train (pandas.DataFrame): Training features
             y_train (pandas.Series): Training labels
+            validation_split (float): Fraction of data to use for validation
         """
         # Select only the features determined by feature selection
         X_train_selected = X_train[self.selected_features]
@@ -370,8 +372,52 @@ class WebLogDetectionBot:
         # Scale the features
         X_train_scaled = self.scaler.fit_transform(X_train_selected)
         
-        # Train the model
+        # Split data for validation if needed
+        if validation_split > 0:
+            from sklearn.model_selection import train_test_split
+            X_train_final, X_val, y_train_final, y_val = train_test_split(
+                X_train_scaled, y_train, test_size=validation_split, random_state=42)
+        else:
+            X_train_final, y_train_final = X_train_scaled, y_train
+            X_val, y_val = None, None
+        
+        # Train the model and track metrics
+        train_scores = []
+        val_scores = []
+        train_losses = []
+        val_losses = []
+        
+        # Train each base estimator separately to track metrics
+        for name, estimator in self.model.estimators:
+            print(f"Training {name}...")
+            estimator.fit(X_train_final, y_train_final)
+            
+            # Calculate training accuracy
+            train_acc = estimator.score(X_train_final, y_train_final)
+            train_scores.append(train_acc)
+            
+            # Calculate validation metrics if validation data exists
+            if X_val is not None and y_val is not None:
+                val_acc = estimator.score(X_val, y_val)
+                val_scores.append(val_acc)
+                
+                # For loss calculation (approximation)
+                if hasattr(estimator, "predict_proba"):
+                    y_val_pred = estimator.predict_proba(X_val)
+                    from sklearn.metrics import log_loss
+                    val_loss = log_loss(y_val, y_val_pred)
+                    val_losses.append(val_loss)
+                    
+                    y_train_pred = estimator.predict_proba(X_train_final)
+                    train_loss = log_loss(y_train_final, y_train_pred)
+                    train_losses.append(train_loss)
+        
+        # Train the ensemble model
         self.model.fit(X_train_scaled, y_train)
+        self.is_trained = True
+        
+        # Generate and save training graphs
+        self.generate_training_graphs(train_scores, val_scores, train_losses, val_losses)
     
     def predict(self, X_test):
         """
@@ -727,6 +773,53 @@ class WebLogDetectionBot:
         self.scaler = model_data['scaler']
         self.selected_features = model_data['selected_features']
         self.is_trained = model_data['is_trained']
+        
+    def generate_training_graphs(self, train_scores, val_scores, train_losses, val_losses):
+        """
+        Generate and save accuracy and loss graphs for the training process.
+        
+        Args:
+            train_scores: List of training accuracy scores
+            val_scores: List of validation accuracy scores
+            train_losses: List of training loss values
+            val_losses: List of validation loss values
+        """
+        # Create results directory if it doesn't exist
+        os.makedirs('results', exist_ok=True)
+        
+        # Get estimator names for x-axis labels
+        estimator_names = [name for name, _ in self.model.estimators]
+        
+        # Plot training & validation accuracy
+        plt.figure(figsize=(10, 6))
+        plt.plot(estimator_names, train_scores, 'o-', label='Training Accuracy')
+        plt.plot(estimator_names, val_scores, 'o-', label='Validation Accuracy')
+        plt.title('Web Logs Model: Training and Validation Accuracy')
+        plt.xlabel('Estimator')
+        plt.ylabel('Accuracy')
+        plt.ylim(0, 1)
+        plt.legend()
+        plt.grid(True)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('results/web_logs_accuracy.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Plot training & validation loss
+        plt.figure(figsize=(10, 6))
+        plt.plot(estimator_names, train_losses, 'o-', label='Training Loss')
+        plt.plot(estimator_names, val_losses, 'o-', label='Validation Loss')
+        plt.title('Web Logs Model: Training and Validation Loss')
+        plt.xlabel('Estimator')
+        plt.ylabel('Loss (Log Loss)')
+        plt.legend()
+        plt.grid(True)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('results/web_logs_loss.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print("Web logs model training graphs saved to 'results' directory")
 
 # Example usage
 if __name__ == "__main__":

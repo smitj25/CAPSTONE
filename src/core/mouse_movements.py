@@ -7,6 +7,7 @@ from keras.models import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Input
 from keras.optimizers import Adam
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 class MouseMovementDetectionBot:
     def __init__(self):
@@ -137,7 +138,10 @@ class MouseMovementDetectionBot:
     def train(self, train_data, train_labels, epochs=10, batch_size=32, validation_split=0.2):
         # Convert labels to one-hot encoding
         train_labels_one_hot = tf.keras.utils.to_categorical(train_labels, num_classes=2)
-        self.model.fit(train_data, train_labels_one_hot, epochs=epochs, batch_size=batch_size,validation_split=validation_split)
+        history = self.model.fit(train_data, train_labels_one_hot, epochs=epochs, batch_size=batch_size, validation_split=validation_split)
+        
+        # Generate and save accuracy and loss graphs
+        self.generate_training_graphs(history)
     
     def predict(self, matrices):
         if not matrices:
@@ -195,6 +199,42 @@ class MouseMovementDetectionBot:
             model_path (str): Path to save the model
         """
         self.model.save(model_path)
+        
+    def generate_training_graphs(self, history):
+        """
+        Generate and save accuracy and loss graphs for the training process.
+        
+        Args:
+            history: Training history object from model.fit()
+        """
+        # Create results directory if it doesn't exist
+        os.makedirs('results', exist_ok=True)
+        
+        # Plot training & validation accuracy
+        plt.figure(figsize=(10, 6))
+        plt.plot(history.history['accuracy'], label='Training Accuracy')
+        plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+        plt.title('Mouse Movement Model: Training and Validation Accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('results/mouse_movement_accuracy.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Plot training & validation loss
+        plt.figure(figsize=(10, 6))
+        plt.plot(history.history['loss'], label='Training Loss')
+        plt.plot(history.history['val_loss'], label='Validation Loss')
+        plt.title('Mouse Movement Model: Training and Validation Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('results/mouse_movement_loss.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print("Mouse movement model training graphs saved to 'results' directory")
 
     def train_sequentially(self, phase1_data, phase1_labels, phase2_data=None, phase2_labels=None, 
                           phase1_epochs=10, phase2_epochs=5, batch_size=32, validation_split=0.2):

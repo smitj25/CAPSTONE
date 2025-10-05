@@ -1,0 +1,202 @@
+{
+  "timestamp": "20250930_030501",
+  "model_analysis": {
+    "mouse_movement_model": {
+      "path": "/Users/khatuaryan/PycharmProjects/Captcha/scripts/../models/mouse_model.h5",
+      "size_mb": 0.9,
+      "type": "neural_network",
+      "format": "HDF5"
+    },
+    "web_log_model": {
+      "path": "/Users/khatuaryan/PycharmProjects/Captcha/scripts/../models/logs_model.pkl",
+      "size_mb": 0.5,
+      "type": "ensemble",
+      "format": "Pickle"
+    }
+  },
+  "fusion_results": {
+    "tests": [
+      {
+        "test_name": "Honeypot Triggered - Bot Keywords",
+        "session_id": "test_001",
+        "expected": "BOT",
+        "prediction": "BOT",
+        "correct": true,
+        "final_score": 0.8,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.6000000000000001,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'bot', Common bot value detected: 'bot', Extremely fast honeypot interaction",
+        "mouse_score": 0.8,
+        "web_log_score": 0.75
+      },
+      {
+        "test_name": "Honeypot Triggered - Automation Keywords",
+        "session_id": "test_002",
+        "expected": "BOT",
+        "prediction": "BOT",
+        "correct": true,
+        "final_score": 0.85,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.7,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'automation', Common bot value detected: 'automation', Extremely fast honeypot interaction",
+        "mouse_score": 0.85,
+        "web_log_score": 0.82
+      },
+      {
+        "test_name": "No Honeypot Interaction - Human",
+        "session_id": "test_003",
+        "expected": "HUMAN",
+        "prediction": "HUMAN",
+        "correct": true,
+        "final_score": 0.15,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.7,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field left empty (human behavior)",
+        "mouse_score": 0.15,
+        "web_log_score": 0.27
+      },
+      {
+        "test_name": "Honeypot Visible - Security Issue",
+        "session_id": "test_004",
+        "expected": "BOT",
+        "prediction": "BOT",
+        "correct": true,
+        "final_score": 0.9,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.8,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field was filled (strong bot indicator), Honeypot field was visible (should be hidden), Extremely fast honeypot interaction",
+        "mouse_score": 0.9,
+        "web_log_score": 0.88
+      },
+      {
+        "test_name": "Fast Honeypot Interaction",
+        "session_id": "test_005",
+        "expected": "BOT",
+        "prediction": "BOT",
+        "correct": true,
+        "final_score": 0.95,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.8999999999999999,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'selenium', Common bot value detected: 'selenium', Extremely fast honeypot interaction",
+        "mouse_score": 0.95,
+        "web_log_score": 0.92
+      },
+      {
+        "test_name": "Human-like Behavior - No Honeypot",
+        "session_id": "test_006",
+        "expected": "HUMAN",
+        "prediction": "HUMAN",
+        "correct": true,
+        "final_score": 0.1,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.8,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field left empty (human behavior)",
+        "mouse_score": 0.1,
+        "web_log_score": 0.2
+      },
+      {
+        "test_name": "Mixed Signals - Honeypot Override",
+        "session_id": "test_007",
+        "expected": "HUMAN",
+        "prediction": "HUMAN",
+        "correct": true,
+        "final_score": 0.3,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.4,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field left empty (human behavior)",
+        "mouse_score": 0.3,
+        "web_log_score": 0.2
+      },
+      {
+        "test_name": "Suspicious Honeypot Pattern",
+        "session_id": "test_008",
+        "expected": "BOT",
+        "prediction": "BOT",
+        "correct": true,
+        "final_score": 0.88,
+        "fusion_method": "mouse_priority",
+        "confidence": 0.76,
+        "honeypot_score": 0.0,
+        "honeypot_risk": "LOW",
+        "honeypot_reasons": "Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'test', Common bot value detected: 'test', Extremely fast honeypot interaction",
+        "mouse_score": 0.88,
+        "web_log_score": 0.85
+      }
+    ],
+    "accuracy": 1.0,
+    "total_tests": 8,
+    "correct_predictions": 8,
+    "fusion_methods_used": {
+      "mouse_priority": 8
+    },
+    "average_confidence": 0.7075,
+    "honeypot_triggered": 0
+  },
+  "detector_results": {
+    "sessions_tested": 3,
+    "successful_detections": 3,
+    "average_processing_time": 0.01950693130493164,
+    "total_processing_time": 0.05852079391479492
+  },
+  "data_analysis": {
+    "files_analyzed": 5,
+    "total_sessions": 18,
+    "file_details": {
+      "mouse_movements.json": {
+        "entries": 1,
+        "size_kb": 3.0
+      },
+      "web_logs.json": {
+        "entries": 12,
+        "size_kb": 5.0
+      },
+      "events.json": {
+        "entries": 1,
+        "size_kb": 5.4
+      },
+      "honeypot.json": {
+        "entries": 1,
+        "size_kb": 0.2
+      },
+      "behavior.json": {
+        "entries": 3,
+        "size_kb": 0.6
+      }
+    }
+  },
+  "benchmarks": {
+    "scenarios_tested": 3,
+    "average_processing_time": 6.67572021484375e-06,
+    "scenarios": [
+      {
+        "name": "High Bot Score",
+        "final_score": 0.915,
+        "processing_time": 1.3113021850585938e-05
+      },
+      {
+        "name": "Low Human Score",
+        "final_score": 0.2,
+        "processing_time": 4.76837158203125e-06
+      },
+      {
+        "name": "Honeypot Override",
+        "final_score": 0.7300000000000001,
+        "processing_time": 2.1457672119140625e-06
+      }
+    ]
+  }
+}

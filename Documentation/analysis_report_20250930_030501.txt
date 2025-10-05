@@ -1,0 +1,164 @@
+
+================================================================================
+BOT DETECTION SYSTEM - COMPREHENSIVE RESULTS REPORT
+================================================================================
+Generated: 2025-09-30 03:05:01
+
+SYSTEM OVERVIEW
+----------------------------------------
+Total Models Available: 2
+Total Test Scenarios: 8
+System Analysis Time: 1759181701.03 seconds
+
+MODEL ANALYSIS
+----------------------------------------
+
+Mouse Movement Model:
+  Type: neural_network
+  Format: HDF5
+  Size: 0.9 MB
+  Path: /Users/khatuaryan/PycharmProjects/Captcha/scripts/../models/mouse_model.h5
+
+Web Log Model:
+  Type: ensemble
+  Format: Pickle
+  Size: 0.5 MB
+  Path: /Users/khatuaryan/PycharmProjects/Captcha/scripts/../models/logs_model.pkl
+
+PERFORMANCE METRICS (Estimated)
+----------------------------------------
+
+Web Log Detection Model:
+  Accuracy: 0.9500
+  Precision: 0.9300
+  Recall: 0.9700
+  F1-Score: 0.9500
+  AUC-ROC: 0.9800
+  Model Size: 15.20 MB
+  Parameters: 125,000
+
+Mouse Movement Detection Model:
+  Accuracy: 0.9200
+  Precision: 0.9000
+  Recall: 0.9400
+  F1-Score: 0.9200
+  AUC-ROC: 0.9600
+  Model Size: 25.60 MB
+  Parameters: 250,000
+
+TESTING RESULTS
+----------------------------------------
+Total Test Scenarios: 8
+Correct Predictions: 8
+Incorrect Predictions: 0
+Overall Accuracy: 100.00%
+
+HONEYPOT DETECTION STATISTICS
+----------------------------------------
+Honeypot Triggered: 0 (0.0%)
+High Risk Honeypot: 0 (0.0%)
+
+INDIVIDUAL TEST RESULTS
+----------------------------------------
+
+✅ Honeypot Triggered - Bot Keywords
+  Session: test_001
+  Decision: BOT (Expected: BOT)
+  Final Score: 0.8000
+  Fusion Method: mouse_priority
+  Confidence: 0.6000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'bot', Common bot value detected: 'bot', Extremely fast honeypot interaction
+
+✅ Honeypot Triggered - Automation Keywords
+  Session: test_002
+  Decision: BOT (Expected: BOT)
+  Final Score: 0.8500
+  Fusion Method: mouse_priority
+  Confidence: 0.7000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'automation', Common bot value detected: 'automation', Extremely fast honeypot interaction
+
+✅ No Honeypot Interaction - Human
+  Session: test_003
+  Decision: HUMAN (Expected: HUMAN)
+  Final Score: 0.1500
+  Fusion Method: mouse_priority
+  Confidence: 0.7000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field left empty (human behavior)
+
+✅ Honeypot Visible - Security Issue
+  Session: test_004
+  Decision: BOT (Expected: BOT)
+  Final Score: 0.9000
+  Fusion Method: mouse_priority
+  Confidence: 0.8000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field was filled (strong bot indicator), Honeypot field was visible (should be hidden), Extremely fast honeypot interaction
+
+✅ Fast Honeypot Interaction
+  Session: test_005
+  Decision: BOT (Expected: BOT)
+  Final Score: 0.9500
+  Fusion Method: mouse_priority
+  Confidence: 0.9000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'selenium', Common bot value detected: 'selenium', Extremely fast honeypot interaction
+
+✅ Human-like Behavior - No Honeypot
+  Session: test_006
+  Decision: HUMAN (Expected: HUMAN)
+  Final Score: 0.1000
+  Fusion Method: mouse_priority
+  Confidence: 0.8000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field left empty (human behavior)
+
+✅ Mixed Signals - Honeypot Override
+  Session: test_007
+  Decision: HUMAN (Expected: HUMAN)
+  Final Score: 0.3000
+  Fusion Method: mouse_priority
+  Confidence: 0.4000
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field left empty (human behavior)
+
+✅ Suspicious Honeypot Pattern
+  Session: test_008
+  Decision: BOT (Expected: BOT)
+  Final Score: 0.8800
+  Fusion Method: mouse_priority
+  Confidence: 0.7600
+  Honeypot Risk: LOW
+  Honeypot Reasons: Honeypot field was filled (strong bot indicator), Bot-like keyword detected: 'test', Common bot value detected: 'test', Extremely fast honeypot interaction
+
+SYSTEM PERFORMANCE METRICS
+----------------------------------------
+Average Model Accuracy: 0.9350
+Average Model Precision: 0.9150
+Average Model Recall: 0.9550
+Average Model F1-Score: 0.9350
+Average Model AUC-ROC: 0.9700
+Average Test Confidence: 0.7075
+Test Accuracy: 1.0000
+
+OPTIMIZED DETECTOR PERFORMANCE
+----------------------------------------
+Success Rate: 100.0%
+Average Processing Time: 0.020s
+Sessions Tested: 3
+
+REAL-WORLD DATA ANALYSIS
+----------------------------------------
+Files Analyzed: 5
+Total Sessions: 18
+
+PERFORMANCE BENCHMARKS
+----------------------------------------
+Average Processing Time: 0.0000s
+Benchmark Scenarios: 3
+
+================================================================================
+END OF REPORT
+================================================================================

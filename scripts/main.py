@@ -3,8 +3,8 @@
 Main Bot Detection System
 
 This script demonstrates the complete bot detection system working with all three components:
-1. Web Log Detection (web_log_detection_bot.py)
-2. Mouse Movement Detection (mouse_movements_detection_bot.py)  
+1. Web Log Detection (web_logs.py)
+2. Mouse Movement Detection (mouse_movements.py)  
 3. Fusion (fusion.py)
 
 The system follows the research paper's approach:
@@ -31,15 +31,15 @@ def _load_module(name: str, filename: str):
     spec.loader.exec_module(module)
     return module
 
-_web_log_mod = _load_module('web_log_detection_bot', 'web_log_detection_bot.py')
-_mouse_mod = _load_module('mouse_movements_detection_bot', 'mouse_movements_detection_bot.py')
+_web_log_mod = _load_module('web_log_detection_bot', 'web_logs.py')
+_mouse_mod = _load_module('mouse_movements_detection_bot', 'mouse_movements.py')
 _fusion_mod = _load_module('fusion', 'fusion.py')
 
 WebLogDetectionBot = _web_log_mod.WebLogDetectionBot
 MouseMovementDetectionBot = _mouse_mod.MouseMovementDetectionBot
 BotDetectionFusion = _fusion_mod.BotDetectionFusion
 
-class ComprehensiveBotDetectionSystem:
+class BotDetectionSystem:
     """
     Comprehensive bot detection system that combines web log and mouse movement analysis
     with decision-level fusion for robust bot detection.
@@ -308,7 +308,7 @@ def main():
     print("="*60)
     
     # Initialize the system
-    system = ComprehensiveBotDetectionSystem()
+    system = BotDetectionSystem()
     
     # Load pre-trained models (expects files under /models)
     system.train_all_models()

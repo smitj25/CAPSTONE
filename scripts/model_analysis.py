@@ -67,7 +67,7 @@ class ComprehensiveModelAnalyzer:
         self.project_root = project_root
         self.models_dir = os.path.join(project_root, 'models')
         self.logs_dir = os.path.join(project_root, 'login_page', 'src', 'logs')
-        self.results_dir = os.path.join(project_root, 'Documentation')
+        self.results_dir = os.path.join(project_root, 'results')
         
         # Ensure results directory exists
         os.makedirs(self.results_dir, exist_ok=True)
